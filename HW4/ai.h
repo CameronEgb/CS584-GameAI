@@ -42,7 +42,8 @@ class DTAction : public DTNode {
     ActionType action;
 public:
     DTAction(ActionType a) : action(a) {}
-    ActionType makeDecision(const WorldState& state) override { return action; }
+    // Fix: Comment out unused parameter name to silence warning
+    ActionType makeDecision(const WorldState& /*state*/) override { return action; }
     void print(int depth = 0) override;
 };
 
@@ -73,7 +74,8 @@ class BTAction : public BTNode {
     ActionType action;
 public:
     BTAction(ActionType a) : action(a) {}
-    BTStatus tick(const WorldState& state) override {
+    // Fix: Comment out unused parameter name to silence warning
+    BTStatus tick(const WorldState& /*state*/) override {
         // Actions in this simple simulation are instantaneous command selections
         return BTStatus::SUCCESS; 
     }

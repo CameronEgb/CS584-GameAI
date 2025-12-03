@@ -6,6 +6,7 @@
 #include <SFML/Graphics.hpp>
 #include <vector>
 #include <memory>
+#include <optional> // Required for SFML 3.0 Event polling
 
 // Simulation Constants
 const int GRID_SIZE = 40;
@@ -15,11 +16,6 @@ const int CELL_H = WINDOW_HEIGHT / GRID_SIZE;
 // --- Helper to build specific trees ---
 
 // 1. Hardcoded Decision Tree (for testing/generating data)
-// Rules:
-// IF EnemyNear -> FLEE
-// ELSE IF EnergyLow -> RECHARGE
-// ELSE IF GoalVisible -> SEEK_GOAL
-// ELSE -> WANDER
 std::unique_ptr<DTNode> buildHardcodedDT() {
     auto wander = std::make_unique<DTAction>(ActionType::WANDER);
     auto seek = std::make_unique<DTAction>(ActionType::SEEK_GOAL);
@@ -33,35 +29,9 @@ std::unique_ptr<DTNode> buildHardcodedDT() {
     return root;
 }
 
-// 2. Behavior Tree (equivalent logic)
-std::unique_ptr<BTNode> buildBehaviorTree() {
-    auto root = std::make_unique<BTSelector>();
-
-    // Priority 1: Flee Enemy
-    auto fleeSeq = std::make_unique<BTSequence>();
-    fleeSeq->addChild(std::make_unique<BTCondition>("enemyNear", true));
-    fleeSeq->addChild(std::make_unique<BTAction>(ActionType::FLEE_ENEMY));
-    root->addChild(std::move(fleeSeq));
-
-    // Priority 2: Recharge
-    auto rechargeSeq = std::make_unique<BTSequence>();
-    rechargeSeq->addChild(std::make_unique<BTCondition>("energyLow", true));
-    rechargeSeq->addChild(std::make_unique<BTAction>(ActionType::RECHARGE));
-    root->addChild(std::move(rechargeSeq));
-
-    // Priority 3: Seek Goal
-    auto seekSeq = std::make_unique<BTSequence>();
-    seekSeq->addChild(std::make_unique<BTCondition>("goalVisible", true));
-    seekSeq->addChild(std::make_unique<BTAction>(ActionType::SEEK_GOAL));
-    root->addChild(std::move(seekSeq));
-
-    // Default: Wander
-    root->addChild(std::make_unique<BTAction>(ActionType::WANDER));
-    return root;
-}
-
 int main() {
-    sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "HW4: Learning & Behavior");
+    // SFML 3.0 Fix: VideoMode takes a Vector2u
+    sf::RenderWindow window(sf::VideoMode({(unsigned int)WINDOW_WIDTH, (unsigned int)WINDOW_HEIGHT}), "HW4: Learning & Behavior");
     window.setFramerateLimit(60);
 
     // --- SETUP ENVIRONMENT ---
@@ -70,9 +40,10 @@ int main() {
 
     Kinematic enemy;
     enemy.position = {800, 600};
-    sf::RectangleShape enemyShape(sf::Vector2f(30, 30));
+    sf::RectangleShape enemyShape(sf::Vector2f(30.f, 30.f));
     enemyShape.setFillColor(sf::Color::Red);
-    enemyShape.setOrigin(15, 15);
+    // SFML 3.0 Fix: setOrigin takes a Vector2f
+    enemyShape.setOrigin({15.f, 15.f});
 
     sf::Vector2f goalPos(1100, 800);
     sf::CircleShape goalShape(15);
@@ -104,9 +75,12 @@ int main() {
 
     while (window.isOpen()) {
         float dt = clock.restart().asSeconds();
-        sf::Event event;
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed) window.close();
+        
+        // SFML 3.0 Fix: Event polling uses std::optional
+        while (const std::optional<sf::Event> event = window.pollEvent()) {
+            if (event->is<sf::Event::Closed>()) {
+                window.close();
+            }
         }
 
         // 1. Perception (Build WorldState)
@@ -206,7 +180,8 @@ int main() {
         
         // Draw Zones
         sf::CircleShape perceptionRing(THREAT_DIST);
-        perceptionRing.setOrigin(THREAT_DIST, THREAT_DIST);
+        // SFML 3.0 Fix: setOrigin takes a Vector2f
+        perceptionRing.setOrigin({THREAT_DIST, THREAT_DIST});
         perceptionRing.setPosition(chara.getKinematic().position);
         perceptionRing.setFillColor(sf::Color::Transparent);
         perceptionRing.setOutlineColor(sf::Color(255, 0, 0, 50));
@@ -217,15 +192,6 @@ int main() {
         window.draw(goalShape);
         window.draw(stationShape);
         chara.draw(window);
-
-        // GUI Text (Energy)
-        // (Simple Console Output for status)
-        // static float printTimer = 0;
-        // printTimer += dt;
-        // if (printTimer > 1.0f) {
-        //     std::cout << "Energy: " << (int)energy << " Action: " << (int)action << "\n";
-        //     printTimer = 0;
-        // }
 
         window.display();
     }
