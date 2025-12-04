@@ -1,7 +1,7 @@
 #include "steering.h"
 #include <iostream>
 #include <algorithm>
-#include <cstdint> // Required for std::uint8_t
+#include <cstdint> 
 #include <cmath>
 
 // --- Utilities ---
@@ -41,7 +41,6 @@ void Breadcrumb::draw(sf::RenderWindow &win) {
         dot.setOrigin({1.5f, 1.5f});
         dot.setPosition(p);
         
-        // FIX: Use std::uint8_t instead of sf::Uint8
         std::uint8_t a = static_cast<std::uint8_t>(std::min(255.f, alpha));
         dot.setFillColor(sf::Color(color.r, color.g, color.b, a));
         
@@ -80,16 +79,55 @@ void Character::setPath(const std::vector<sf::Vector2f>& p) {
     currentWaypoint = 0;
 }
 
+// Replaces simple seek with "Arrive" behavior
 void Character::seek(sf::Vector2f targetPos, float dt) {
     sf::Vector2f dir = targetPos - kinematic.position;
     float dist = std::hypot(dir.x, dir.y);
-    if (dist > 5.f) dir /= dist; 
-    else dir = {0,0}; 
-
-    kinematic.velocity = dir * maxSpeed;
     
-    if (dist > 5.f) {
-        kinematic.orientation = std::atan2(kinematic.velocity.y, kinematic.velocity.x);
+    const float slowRadius = 100.f;
+    const float stopRadius = 2.f;
+
+    float targetSpeed = maxSpeed;
+
+    if (dist < stopRadius) {
+        targetSpeed = 0.f;
+        dir = {0,0};
+    } else if (dist < slowRadius) {
+        // Linearly ramp down speed
+        targetSpeed = maxSpeed * (dist / slowRadius);
+        dir /= dist;
+    } else {
+        dir /= dist;
+    }
+
+    sf::Vector2f targetVelocity = dir * targetSpeed;
+
+    // Linear Acceleration (Smooth movement)
+    sf::Vector2f linearAccel = (targetVelocity - kinematic.velocity) * 2.0f; // 2.0 is a dampening factor
+    
+    kinematic.velocity += linearAccel * dt;
+    
+    // Clamp velocity
+    float currentSpeed = std::hypot(kinematic.velocity.x, kinematic.velocity.y);
+    if (currentSpeed > maxSpeed) {
+        kinematic.velocity = (kinematic.velocity / currentSpeed) * maxSpeed;
+    }
+
+    // Align (Face direction of motion smoothly)
+    if (currentSpeed > 10.f) {
+        float targetOrient = std::atan2(kinematic.velocity.y, kinematic.velocity.x);
+        float diff = mapToRange(targetOrient - kinematic.orientation);
+        float rotationSpeed = 3.0f; // Rad/sec
+        
+        // Smoothly rotate
+        if (std::abs(diff) > 0.05f) {
+            kinematic.rotation = (diff > 0 ? 1.f : -1.f) * rotationSpeed;
+        } else {
+            kinematic.rotation = 0.f;
+            kinematic.orientation = targetOrient;
+        }
+    } else {
+        kinematic.rotation = 0.f;
     }
 }
 
@@ -98,7 +136,10 @@ void Character::flee(sf::Vector2f targetPos, float dt) {
     float dist = std::hypot(dir.x, dir.y);
     if (dist > 0.1f) dir /= dist;
 
-    kinematic.velocity = dir * maxSpeed;
+    sf::Vector2f targetVelocity = dir * maxSpeed;
+    // Instant velocity change for Flee (panic)
+    kinematic.velocity = targetVelocity;
+
     if (dist > 1.0f) {
         kinematic.orientation = std::atan2(kinematic.velocity.y, kinematic.velocity.x);
     }
@@ -108,24 +149,32 @@ void Character::wander(float dt) {
     kinematic.orientation += randomBinomial() * 4.0f * dt; 
     kinematic.velocity.x = std::cos(kinematic.orientation) * (maxSpeed * 0.5f);
     kinematic.velocity.y = std::sin(kinematic.orientation) * (maxSpeed * 0.5f);
+    kinematic.rotation = 0; 
 }
 
 void Character::update(float dt, const Kinematic& /*target*/) {
-    // 0. Path Following
+    // 0. Path Following with Arrive Logic
     if (!path.empty() && currentWaypoint < path.size()) {
         sf::Vector2f target = path[currentWaypoint];
         sf::Vector2f dir = target - kinematic.position;
         float dist = std::hypot(dir.x, dir.y);
         
-        if (dist < 15.f) {
+        // Waypoint switching radius
+        float switchRadius = 20.f;
+        if (currentWaypoint == path.size() - 1) switchRadius = 2.f; // Strict for final point
+
+        if (dist < switchRadius) {
             currentWaypoint++; 
         } else {
-            if (dist > 0.01f) dir /= dist;
-            kinematic.velocity = dir * maxSpeed;
-            kinematic.orientation = std::atan2(dir.y, dir.x);
+            // Use the Seek (Arrive) logic for movement
+            seek(target, dt);
+            // Seek applies the update to velocity, so we just return here?
+            // No, Seek updates Velocity, Update applies Position.
         }
     } else if (!path.empty() && currentWaypoint >= path.size()) {
+        // Stop at end
         kinematic.velocity = {0,0};
+        kinematic.rotation = 0;
         path.clear();
     }
 
@@ -138,8 +187,7 @@ void Character::update(float dt, const Kinematic& /*target*/) {
     breadcrumbs.update(kinematic.position);
     
     shape.setPosition(kinematic.position);
-    // FIX: Use sf::radians for SFML 3.0 rotation
-    shape.setRotation(sf::radians(kinematic.orientation));
+    shape.setRotation(sf::degrees(kinematic.orientation * 180.f / PI));
 }
 
 void Character::draw(sf::RenderWindow &win) {
