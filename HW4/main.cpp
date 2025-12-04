@@ -10,7 +10,6 @@
 #include <cmath>
 
 // --- PHYSICS HELPER ---
-// Generic collision resolution for any Kinematic object (Agent or Enemy)
 void resolveKinematicCollisions(Kinematic& k, const std::vector<sf::FloatRect>& walls) {
     float r = 10.f; // Radius
     sf::FloatRect bounds({k.position.x - r, k.position.y - r}, {r * 2.f, r * 2.f});
@@ -18,7 +17,6 @@ void resolveKinematicCollisions(Kinematic& k, const std::vector<sf::FloatRect>& 
     for (const auto& w : walls) {
         std::optional<sf::FloatRect> intersection = w.findIntersection(bounds);
         if (intersection) {
-            // Push out in direction of least overlap
             if (intersection->size.x < intersection->size.y) {
                 if (k.position.x < w.position.x) k.position.x -= intersection->size.x;
                 else k.position.x += intersection->size.x;
@@ -52,14 +50,15 @@ int main() {
     
     // --- SETUP ENTITIES ---
     Character chara;
-    // Teleport resets position AND velocity to 0
     chara.teleport(200.f, 150.f); 
 
     Kinematic enemy;
     enemy.position = {600.f, 450.f}; // Room 4
-    // Give enemy explicit initial velocity of 0
     enemy.velocity = {0.f, 0.f};
     
+    // NEW: Enemy Breadcrumbs (Red, fade slightly slower than agent)
+    Breadcrumb enemyTrail(150, 5, sf::Color::Red);
+
     sf::RectangleShape enemyShape(sf::Vector2f(30.f, 30.f));
     enemyShape.setFillColor(sf::Color::Red);
     enemyShape.setOrigin({15.f, 15.f});
@@ -87,7 +86,7 @@ int main() {
 
     sf::Clock clock;
     enum Mode { WARMUP, RECORDING, LEARNING, ACTING, MANUAL };
-    Mode mode = WARMUP; // Start in warmup to ensure stillness
+    Mode mode = WARMUP; 
     float stateTimer = 0.f;
     float pathUpdateTimer = 0.f;
 
@@ -99,7 +98,6 @@ int main() {
     std::cout << "--- STARTING ---" << std::endl;
     std::cout << "Warmup (1s)..." << std::endl;
 
-    // Helper to calculate path for Agent
     auto planPathTo = [&](sf::Vector2f target) {
         Metrics m;
         if (target.x < 40 || target.x > WINDOW_WIDTH-40 || target.y < 40 || target.y > WINDOW_HEIGHT-40) return;
@@ -120,7 +118,6 @@ int main() {
         }
     };
 
-    // Helper to calculate path for Enemy
     auto planEnemyPath = [&](sf::Vector2f target) {
         Metrics m;
         int startNode = graph.getNodeAt(enemy.position.x, enemy.position.y, 20.f);
@@ -155,8 +152,6 @@ int main() {
         }
 
         // --- 1. GAME LOGIC ---
-        
-        // Handle Warmup
         if (mode == WARMUP) {
             stateTimer += dt;
             if (stateTimer > 1.0f) {
@@ -164,10 +159,8 @@ int main() {
                 stateTimer = 0.f;
                 std::cout << "Phase 1: Recording..." << std::endl;
             }
-            // Skip decision making during warmup to stay still
         }
         else {
-            // Perception
             WorldState state;
             float dEnemy = std::hypot(chara.getKinematic().position.x - enemy.position.x, 
                                       chara.getKinematic().position.y - enemy.position.y);
@@ -228,39 +221,33 @@ int main() {
         }
 
         // --- 2. AGENT PHYSICS ---
-        // Pass dummy target because Character handles internal logic
         Kinematic dummy; 
         chara.update(dt, dummy);
         energy = std::max(0.f, std::min(100.f, energy));
         
-        // Resolve Collisions for Agent
         Kinematic kChar = chara.getKinematic();
         resolveKinematicCollisions(kChar, walls);
         chara.setPosition(kChar.position.x, kChar.position.y);
 
-        // --- 3. ENEMY INTELLIGENCE (Pathfinding) ---
+        // --- 3. ENEMY INTELLIGENCE ---
         enemyRepathTimer -= dt;
         bool chase = (std::hypot(chara.getKinematic().position.x - enemy.position.x, 
                                  chara.getKinematic().position.y - enemy.position.y) < 300.f);
 
-        // A. Planning
         if (chase) {
-            // Re-path to player often
             if (enemyRepathTimer <= 0.f) {
                 planEnemyPath(chara.getKinematic().position);
                 enemyRepathTimer = 0.5f;
             }
         } else {
-            // Patrol: If no path or finished, pick random node
             if (enemyPath.empty() || enemyWaypoint >= (int)enemyPath.size()) {
                 int rNode = rand() % graph.positions.size();
                 planEnemyPath(graph.positions[rNode]);
             }
         }
 
-        // B. Movement (Path Following)
         sf::Vector2f steering(0,0);
-        float enemySpeed = 160.f; // Slightly slower than player
+        float enemySpeed = 110.f; // Slower Enemy
 
         if (!enemyPath.empty() && enemyWaypoint < (int)enemyPath.size()) {
             sf::Vector2f target = enemyPath[enemyWaypoint];
@@ -275,20 +262,18 @@ int main() {
             }
         }
 
-        // Apply Velocity with some inertia
         sf::Vector2f accel = (steering - enemy.velocity) * 4.0f;
         enemy.velocity += accel * dt;
         
-        // Clamp speed
         float s = std::hypot(enemy.velocity.x, enemy.velocity.y);
         if (s > enemySpeed) enemy.velocity = (enemy.velocity / s) * enemySpeed;
 
-        // Apply position
         enemy.position += enemy.velocity * dt;
-
-        // Resolve Collisions for Enemy (Walls)
         resolveKinematicCollisions(enemy, walls);
         enemyShape.setPosition(enemy.position);
+        
+        // UPDATE ENEMY BREADCRUMBS
+        enemyTrail.update(enemy.position);
 
         // --- DRAW ---
         window.clear(sf::Color(20, 20, 25));
@@ -302,7 +287,9 @@ int main() {
             window.draw(r);
         }
 
-        // Zones
+        // Draw Enemy Trail
+        enemyTrail.draw(window);
+
         sf::CircleShape ring(THREAT_DIST);
         ring.setOrigin({THREAT_DIST, THREAT_DIST});
         ring.setPosition(chara.getKinematic().position);

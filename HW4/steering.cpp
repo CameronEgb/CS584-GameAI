@@ -38,6 +38,7 @@ void Breadcrumb::update(const sf::Vector2f &pos) {
 void Breadcrumb::draw(sf::RenderWindow &win) {
     std::queue<sf::Vector2f> temp = q;
     float alpha = 20.f; 
+    // Calculate increment to reach ~255 at the head of the trail
     float inc = 235.f / std::max(1, (int)q.size()); 
     
     while (!temp.empty()) {
@@ -61,8 +62,9 @@ void Breadcrumb::clear() {
 }
 
 // --- Character ---
+// TUNING: Reduced maxCrumbs (100) for faster fade. Increased maxSpeed (300).
 Character::Character() 
-    : breadcrumbs(500, 3, sf::Color::Magenta), currentWaypoint(0), maxSpeed(225.f) 
+    : breadcrumbs(100, 4, sf::Color::Magenta), currentWaypoint(0), maxSpeed(300.f) 
 {
     shape.setPointCount(3);
     shape.setPoint(0, sf::Vector2f(20, 0));
@@ -73,18 +75,16 @@ Character::Character()
     shape.setOutlineThickness(1);
     shape.setOrigin({0, 0}); 
     
-    // Explicitly zero out velocity to ensure standstill start
+    // Explicitly zero out velocity
     kinematic.velocity = {0.f, 0.f};
     kinematic.rotation = 0.f;
 }
 
-// PHYSICS UPDATE ONLY - Does NOT clear crumbs
 void Character::setPosition(float x, float y) {
     kinematic.position = {x, y};
     shape.setPosition(kinematic.position);
 }
 
-// RESET - Clears crumbs and kills velocity
 void Character::teleport(float x, float y) {
     kinematic.position = {x, y};
     kinematic.velocity = {0.f, 0.f};
@@ -119,7 +119,7 @@ void Character::seek(sf::Vector2f targetPos, float dt) {
     }
 
     sf::Vector2f targetVelocity = dir * targetSpeed;
-    sf::Vector2f linearAccel = (targetVelocity - kinematic.velocity) * 3.0f; 
+    sf::Vector2f linearAccel = (targetVelocity - kinematic.velocity) * 4.0f; // Snappier accel for higher speed
     
     kinematic.velocity += linearAccel * dt;
     
@@ -131,7 +131,7 @@ void Character::seek(sf::Vector2f targetPos, float dt) {
     if (currentSpeed > 10.f) {
         float targetOrient = std::atan2(kinematic.velocity.y, kinematic.velocity.x);
         float diff = mapToRange(targetOrient - kinematic.orientation);
-        float rotationSpeed = 4.5f; 
+        float rotationSpeed = 6.0f; // Faster rotation for higher speed
         
         if (std::abs(diff) > 0.05f) {
             kinematic.rotation = (diff > 0 ? 1.f : -1.f) * rotationSpeed;
