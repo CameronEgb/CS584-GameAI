@@ -58,16 +58,26 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
     float doorSize = 100.f; // Gap size
 
     // Vertical Divider (Mid X)
-    // Top Segment
-    walls.emplace_back(sf::FloatRect({midX - thick/2, top}, {thick, (midY - doorSize/2) - top}));
-    // Bottom Segment
-    walls.emplace_back(sf::FloatRect({midX - thick/2, midY + doorSize/2}, {thick, bottom - (midY + doorSize/2)}));
+    // Top Section (Top to MidY) with gap
+    float topDoorY = top + qH/2.f;
+    walls.emplace_back(sf::FloatRect({midX - thick/2, top}, {thick, topDoorY - doorSize/2 - top}));
+    walls.emplace_back(sf::FloatRect({midX - thick/2, topDoorY + doorSize/2}, {thick, midY - (topDoorY + doorSize/2)}));
+
+    // Bottom Section (MidY to Bottom) with gap
+    float botDoorY = midY + qH/2.f;
+    walls.emplace_back(sf::FloatRect({midX - thick/2, midY}, {thick, botDoorY - doorSize/2 - midY}));
+    walls.emplace_back(sf::FloatRect({midX - thick/2, botDoorY + doorSize/2}, {thick, bottom - (botDoorY + doorSize/2)}));
 
     // Horizontal Divider (Mid Y)
-    // Left Segment
-    walls.emplace_back(sf::FloatRect({left, midY - thick/2}, {(midX - doorSize/2) - left, thick}));
-    // Right Segment
-    walls.emplace_back(sf::FloatRect({midX + doorSize/2, midY - thick/2}, {right - (midX + doorSize/2), thick}));
+    // Left Section (Left to MidX) with gap
+    float leftDoorX = left + qW/2.f;
+    walls.emplace_back(sf::FloatRect({left, midY - thick/2}, {leftDoorX - doorSize/2 - left, thick}));
+    walls.emplace_back(sf::FloatRect({leftDoorX + doorSize/2, midY - thick/2}, {midX - (leftDoorX + doorSize/2), thick}));
+
+    // Right Section (MidX to Right) with gap
+    float rightDoorX = midX + qW/2.f;
+    walls.emplace_back(sf::FloatRect({midX, midY - thick/2}, {rightDoorX - doorSize/2 - midX, thick}));
+    walls.emplace_back(sf::FloatRect({rightDoorX + doorSize/2, midY - thick/2}, {right - (rightDoorX + doorSize/2), thick}));
 
     // --- 3. Obstacles (Centered in quadrants) ---
     float obsSize = 50.f;

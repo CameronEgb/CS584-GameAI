@@ -306,8 +306,8 @@ int main() {
 
             if (mode == ACTING) {
                 WorldState state;
-                state.enemyNear = (dEnemy < THREAT_DIST);
                 state.canSeeEnemy = hasLineOfSight(chara.getKinematic().position, enemy.getKinematic().position, walls);
+                state.enemyNear = (dEnemy < THREAT_DIST) && state.canSeeEnemy;
                 
                 sf::Vector2f hidingSpot = findHidingSpot(chara.getKinematic().position, enemy.getKinematic().position, walls);
                 state.canHide = (hidingSpot.x != -1.f);
