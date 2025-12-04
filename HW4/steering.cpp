@@ -64,7 +64,8 @@ void Breadcrumb::clear() {
 // --- Character ---
 // TUNING: Reduced maxCrumbs (100) for faster fade. Increased maxSpeed (300).
 Character::Character() 
-    : breadcrumbs(100, 4, sf::Color::Magenta), currentWaypoint(0), maxSpeed(300.f) 
+    : breadcrumbs(100, 4, sf::Color::Magenta), currentWaypoint(0), maxSpeed(150.f), // Adjusted default speed
+      wanderOrientation(0.f), wanderOffset(100.f), wanderRadius(50.f)
 {
     shape.setPointCount(3);
     shape.setPoint(0, sf::Vector2f(20, 0));
@@ -97,6 +98,10 @@ void Character::teleport(float x, float y) {
 void Character::setPath(const std::vector<sf::Vector2f>& p) {
     path = p;
     currentWaypoint = 0;
+}
+
+void Character::setMaxSpeed(float speed) {
+    maxSpeed = speed;
 }
 
 void Character::seek(sf::Vector2f targetPos, float dt) {
@@ -149,8 +154,17 @@ void Character::flee(sf::Vector2f targetPos, float dt) {
     float dist = std::hypot(dir.x, dir.y);
     if (dist > 0.1f) dir /= dist;
 
-    kinematic.velocity = dir * maxSpeed;
+    // Use seek logic but with max speed to get away
+    sf::Vector2f targetVelocity = dir * maxSpeed;
+    sf::Vector2f linearAccel = (targetVelocity - kinematic.velocity) * 8.0f; // More responsive flee
     
+    kinematic.velocity += linearAccel * dt;
+    
+    float currentSpeed = std::hypot(kinematic.velocity.x, kinematic.velocity.y);
+    if (currentSpeed > maxSpeed) {
+        kinematic.velocity = (kinematic.velocity / currentSpeed) * maxSpeed;
+    }
+
     if (dist > 1.0f) {
         kinematic.orientation = std::atan2(kinematic.velocity.y, kinematic.velocity.x);
     }
@@ -158,10 +172,21 @@ void Character::flee(sf::Vector2f targetPos, float dt) {
 }
 
 void Character::wander(float dt) {
-    kinematic.orientation += randomBinomial() * 6.0f * dt; 
-    kinematic.velocity.x = std::cos(kinematic.orientation) * (maxSpeed * 0.6f);
-    kinematic.velocity.y = std::sin(kinematic.orientation) * (maxSpeed * 0.6f);
-    kinematic.rotation = 0.f; 
+    // 1. Update the wander orientation
+    wanderOrientation += randomBinomial() * 2.0f * dt; // wanderRate
+
+    // 2. Calculate the center of the wander circle
+    sf::Vector2f circleCenter = kinematic.position;
+    circleCenter.x += wanderOffset * std::cos(kinematic.orientation);
+    circleCenter.y += wanderOffset * std::sin(kinematic.orientation);
+
+    // 3. Calculate the target point on the circle
+    sf::Vector2f targetPos = circleCenter;
+    targetPos.x += wanderRadius * std::cos(wanderOrientation);
+    targetPos.y += wanderRadius * std::sin(wanderOrientation);
+
+    // 4. Seek the target
+    seek(targetPos, dt);
 }
 
 void Character::stop() {

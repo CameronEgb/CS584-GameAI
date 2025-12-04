@@ -33,33 +33,22 @@ void resolveKinematicCollisions(Kinematic& k, const std::vector<sf::FloatRect>& 
     }
 }
 
-std::unique_ptr<DTNode> buildHardcodedDT() {
+// Decision Tree for the PLAYER
+std::unique_ptr<DTNode> buildPlayerDT() {
     auto wander = std::make_unique<DTAction>(ActionType::WANDER);
-    auto seek = std::make_unique<DTAction>(ActionType::SEEK_GOAL);
-    auto recharge = std::make_unique<DTAction>(ActionType::RECHARGE);
-    auto flee = std::make_unique<DTAction>(ActionType::FLEE_ENEMY);
-
-    auto checkGoal = std::make_unique<DTDecision>("goalVisible", std::move(seek), std::move(wander));
-    auto checkEnergy = std::make_unique<DTDecision>("energyLow", std::move(recharge), std::move(checkGoal));
-    auto root = std::make_unique<DTDecision>("enemyNear", std::move(flee), std::move(checkEnergy));
-    return root;
-}
-
-std::unique_ptr<DTNode> buildCustomDT() {
-    auto wander = std::make_unique<DTAction>(ActionType::WANDER);
-    auto seek = std::make_unique<DTAction>(ActionType::SEEK_GOAL);
     auto flee = std::make_unique<DTAction>(ActionType::FLEE_ENEMY);
     auto seek_center = std::make_unique<DTAction>(ActionType::SEEK_CENTER);
 
-    auto checkMaxSpeed = std::make_unique<DTDecision>("isAtMaxSpeed", std::move(wander), std::move(seek));
-    auto checkNearWall = std::make_unique<DTDecision>("isNearWall", std::move(seek_center), std::move(checkMaxSpeed));
-    auto root = std::make_unique<DTDecision>("isMonsterNear", std::move(flee), std::move(checkNearWall));
+    // If near a wall, seek center. Otherwise, wander.
+    auto checkNearWall = std::make_unique<DTDecision>("isNearWall", std::move(seek_center), std::move(wander));
+    // If enemy is near, flee. Otherwise, check for walls.
+    auto root = std::make_unique<DTDecision>("enemyNear", std::move(flee), std::move(checkNearWall));
 
     return root;
 }
 
 int main() {
-    sf::RenderWindow window(sf::VideoMode({(unsigned int)WINDOW_WIDTH, (unsigned int)WINDOW_HEIGHT}), "HW4: Intelligent Enemy");
+    sf::RenderWindow window(sf::VideoMode({(unsigned int)WINDOW_WIDTH, (unsigned int)WINDOW_HEIGHT}), "HW4: Player Decision Tree");
     window.setFramerateLimit(60);
 
     // --- ENVIRONMENT ---
@@ -67,10 +56,10 @@ int main() {
     Graph graph = createFourRoomGraph(walls); 
     
     // --- SETUP ENTITIES ---
-    Character chara;
+    Character chara; // This is the player
     chara.teleport(AGENT_START_POS.x, AGENT_START_POS.y); 
 
-    Kinematic enemy;
+    Kinematic enemy; // This is the monster
     enemy.position = ENEMY_START_POS;
     enemy.velocity = {0.f, 0.f};
     
@@ -80,49 +69,28 @@ int main() {
     enemyShape.setFillColor(sf::Color::Red);
     enemyShape.setOrigin({15.f, 15.f});
 
-    sf::Vector2f goalPos(600.f, 150.f); 
-    sf::CircleShape goalShape(15);
-    goalShape.setFillColor(sf::Color::Green);
-    goalShape.setPosition(goalPos);
-    goalShape.setOrigin({15.f, 15.f});
-
-    sf::Vector2f stationPos(200.f, 450.f); 
-    sf::RectangleShape stationShape(sf::Vector2f(40.f, 40.f));
-    stationShape.setFillColor(sf::Color::Blue);
-    stationShape.setPosition(stationPos);
-    stationShape.setOrigin({20.f, 20.f});
-
     // --- AI STATE ---
-    float energy = 100.0f;
-    const float THREAT_DIST = 150.0f;
-    const float GOAL_DIST = 300.0f;
-    const float MAX_SPEED = 100.0f;
-    const float WALL_PROXIMITY = 50.0f;
+    const float THREAT_DIST = 200.0f;
+    const float WALL_PROXIMITY = 60.0f; // Increased for better wall avoidance
+    const float NORMAL_SPEED = 150.f;
+    const float FLEE_SPEED = 250.f;
 
-
-    auto hardcodedDT = buildHardcodedDT();
-    auto customDT = buildCustomDT();
-    std::unique_ptr<DTNode> learnedDT = nullptr;
-    std::vector<TrainingExample> trainingData;
+    auto playerDT = buildPlayerDT();
 
     sf::Clock clock;
-    enum Mode { WARMUP, RECORDING, LEARNING, ACTING, MANUAL };
+    enum Mode { WARMUP, ACTING, MANUAL };
     Mode mode = WARMUP; 
     float stateTimer = 0.f;
     float pathUpdateTimer = 0.f;
 
-    // --- ENEMY PATHFINDING STATE ---
-    std::vector<sf::Vector2f> enemyPath;
-    int enemyWaypoint = 0;
+    // --- ENEMY PATHFINDING STATE (simple chase) ---
     float enemyRepathTimer = 0.f;
 
     std::cout << "--- STARTING ---" << std::endl;
-    std::cout << "Warmup (1s)..." << std::endl;
+    std::cout << "Player is AI-controlled. Click to take manual control." << std::endl;
 
     auto planPathTo = [&](sf::Vector2f target) {
         Metrics m;
-        if (target.x < 40 || target.x > WINDOW_WIDTH-40 || target.y < 40 || target.y > WINDOW_HEIGHT-40) return;
-
         int startNode = graph.getNodeAt(chara.getKinematic().position.x, chara.getKinematic().position.y, 20.f);
         int endNode = graph.getNodeAt(target.x, target.y, 20.f);
         
@@ -139,39 +107,15 @@ int main() {
         }
     };
 
-    auto planEnemyPath = [&](sf::Vector2f target) {
-        Metrics m;
-        int startNode = graph.getNodeAt(enemy.position.x, enemy.position.y, 20.f);
-        int endNode = graph.getNodeAt(target.x, target.y, 20.f);
-
-        if (startNode != -1 && endNode != -1) {
-            std::vector<int> pathIndices = aStar(graph, startNode, endNode, euclideanHeur, m);
-            if (!pathIndices.empty()) {
-                enemyPath.clear();
-                for (int idx : pathIndices) enemyPath.push_back(graph.positions[idx]);
-                enemyPath.push_back(target);
-                enemyWaypoint = 0;
-            }
-        }
-    };
-
     // Helper to Reset Game State
     auto resetGame = [&]() {
         std::cout << ">>> CAUGHT! Resetting positions... <<<" << std::endl;
-        
-        // Reset Agent
         chara.teleport(AGENT_START_POS.x, AGENT_START_POS.y);
-        energy = 100.0f; // Reset energy too
-
-        // Reset Enemy
         enemy.position = ENEMY_START_POS;
         enemy.velocity = {0.f, 0.f};
-        enemyPath.clear();
-        enemyTrail.clear();
-
-        // Optional: Go back to WARMUP to give the player a breather
         mode = WARMUP;
         stateTimer = 0.f;
+        std::cout << "Player is AI-controlled. Click to take manual control." << std::endl;
     };
 
     while (window.isOpen()) {
@@ -187,151 +131,103 @@ int main() {
                                           static_cast<float>(mousePress->position.y));
                     planPathTo(clickPos);
                     mode = MANUAL; 
+                    std::cout << "--- MANUAL CONTROL ---" << std::endl;
                 }
             }
         }
 
-        // --- 1. GAME LOGIC ---
+        // --- 1. GAME LOGIC & PLAYER AI ---
         if (mode == WARMUP) {
             stateTimer += dt;
             if (stateTimer > 1.0f) {
-                // If we have a learned tree, go to ACTING, else RECORDING
-                if (learnedDT) mode = ACTING;
-                else mode = RECORDING;
-                
+                mode = ACTING;
                 stateTimer = 0.f;
-                std::cout << "--- GO! ---" << std::endl;
+                std::cout << "--- PLAYER AI ACTIVE ---" << std::endl;
             }
         }
         else {
-            WorldState state;
             float dEnemy = std::hypot(chara.getKinematic().position.x - enemy.position.x, 
                                       chara.getKinematic().position.y - enemy.position.y);
-            float dGoal = std::hypot(chara.getKinematic().position.x - goalPos.x,
-                                     chara.getKinematic().position.y - goalPos.y);
 
             // *** GAME OVER CHECK ***
-            if (dEnemy < 30.f) { // Collision threshold (30px)
+            if (dEnemy < 30.f) {
                 resetGame();
-                // Skip the rest of the frame to prevent weird movement
                 continue; 
             }
 
-            state.enemyNear = (dEnemy < THREAT_DIST);
-            state.energyLow = (energy < 30.0f);
-            state.goalVisible = (dGoal < GOAL_DIST);
-            state.isAtMaxSpeed = chara.getKinematic().getSpeed() > MAX_SPEED;
-            state.isNearWall = chara.getKinematic().position.x < WALL_PROXIMITY || chara.getKinematic().position.x > WINDOW_WIDTH - WALL_PROXIMITY || chara.getKinematic().position.y < WALL_PROXIMITY || chara.getKinematic().position.y > WINDOW_HEIGHT - WALL_PROXIMITY;
-            state.isMonsterNear = dEnemy < THREAT_DIST;
+            if (mode == ACTING) {
+                WorldState state;
+                state.enemyNear = (dEnemy < THREAT_DIST);
+                
+                const auto& pos = chara.getKinematic().position;
+                state.isNearWall = pos.x < WALL_PROXIMITY || pos.x > WINDOW_WIDTH - WALL_PROXIMITY ||
+                                   pos.y < WALL_PROXIMITY || pos.y > WINDOW_HEIGHT - WALL_PROXIMITY;
 
-            ActionType action = ActionType::NONE;
-            
-            if (mode != MANUAL) {
-                if (mode == RECORDING) {
-                    action = customDT->makeDecision(state);
-                    if ((int)(stateTimer * 10) % 5 == 0) trainingData.push_back({state, action});
-                    stateTimer += dt;
-                    if (stateTimer > 10.0f) {
-                        mode = LEARNING;
-                        std::cout << "--- LEARNING COMPLETE ---" << std::endl;
-                    }
-                } 
-                else if (mode == LEARNING) {
-                    std::vector<std::string> attrs = {"enemyNear", "energyLow", "goalVisible", "isAtMaxSpeed", "isNearWall", "isMonsterNear"};
-                    learnedDT = ID3Learner::learn(trainingData, attrs);
-                    learnedDT->print();
-                    mode = ACTING;
-                }
-                else if (mode == ACTING && learnedDT) {
-                    action = learnedDT->makeDecision(state);
+                // Make decisions for the player character
+                ActionType action = playerDT->makeDecision(state);
+                
+                // Adjust speed based on threat
+                if (state.enemyNear) {
+                    chara.setMaxSpeed(FLEE_SPEED);
+                } else {
+                    chara.setMaxSpeed(NORMAL_SPEED);
                 }
 
                 pathUpdateTimer -= dt;
                 switch(action) {
                     case ActionType::FLEE_ENEMY:
-                        chara.setPath({});
+                        chara.setPath({}); // Clear any path and flee directly
                         chara.flee(enemy.position, dt);
-                        energy -= 5.f * dt;
-                        break;
-                    case ActionType::SEEK_GOAL:
-                        if (pathUpdateTimer <= 0.f) { planPathTo(goalPos); pathUpdateTimer = 1.0f; }
-                        energy -= 2.f * dt;
-                        break;
-                    case ActionType::RECHARGE:
-                        if (pathUpdateTimer <= 0.f) { planPathTo(stationPos); pathUpdateTimer = 1.0f; }
-                        if (std::hypot(chara.getKinematic().position.x - stationPos.x, 
-                                       chara.getKinematic().position.y - stationPos.y) < 50) 
-                            energy += 20.f * dt;
-                        break;
-                    case ActionType::WANDER:
-                        chara.setPath({});
-                        chara.wander(dt);
-                        energy -= 1.f * dt;
                         break;
                     case ActionType::SEEK_CENTER:
-                        if (pathUpdateTimer <= 0.f) { planPathTo(CENTER_SCREEN); pathUpdateTimer = 1.0f; }
-                        energy -= 2.f * dt;
+                        // Only plan a new path every so often to avoid constant recalculation
+                        if (pathUpdateTimer <= 0.f) { 
+                            planPathTo(CENTER_SCREEN); 
+                            pathUpdateTimer = 1.5f; 
+                        }
                         break;
-
-                    default: break;
+                    case ActionType::WANDER:
+                        chara.setPath({}); // Clear any path and just wander
+                        chara.wander(dt);
+                        break;
+                    default: 
+                        chara.stop();
+                        break;
                 }
             }
         }
 
-        // --- 2. AGENT PHYSICS ---
-        Kinematic dummy; 
+        // --- 2. PLAYER PHYSICS ---
+        Kinematic dummy; // Dummy target, not used by player update logic
         chara.update(dt, dummy);
-        energy = std::max(0.f, std::min(100.f, energy));
         
         Kinematic kChar = chara.getKinematic();
         resolveKinematicCollisions(kChar, walls);
         chara.setPosition(kChar.position.x, kChar.position.y);
 
-        // --- 3. ENEMY INTELLIGENCE ---
-        // Only run enemy logic if not in warmup
+        // --- 3. ENEMY INTELLIGENCE (Simple Chase) ---
         if (mode != WARMUP) {
             enemyRepathTimer -= dt;
-            bool chase = (std::hypot(chara.getKinematic().position.x - enemy.position.x, 
-                                     chara.getKinematic().position.y - enemy.position.y) < 300.f);
+            // Simple deterministic chase
+            if (enemyRepathTimer <= 0.f) {
+                // Enemy just seeks the player's current position
+                sf::Vector2f steering = chara.getKinematic().position - enemy.position;
+                float dist = std::hypot(steering.x, steering.y);
+                if (dist > 0.1f) steering /= dist;
 
-            if (chase) {
-                if (enemyRepathTimer <= 0.f) {
-                    planEnemyPath(chara.getKinematic().position);
-                    enemyRepathTimer = 0.5f;
-                }
-            } else {
-                if (enemyPath.empty() || enemyWaypoint >= (int)enemyPath.size()) {
-                    int rNode = rand() % graph.positions.size();
-                    planEnemyPath(graph.positions[rNode]);
-                }
+                float enemySpeed = 110.f;
+                sf::Vector2f accel = (steering * enemySpeed - enemy.velocity) * 4.0f;
+                enemy.velocity += accel * dt;
+
+                float s = std::hypot(enemy.velocity.x, enemy.velocity.y);
+                if (s > enemySpeed) enemy.velocity = (enemy.velocity / s) * enemySpeed;
+
+                enemyRepathTimer = 0.2f; // Re-evaluate direction frequently
             }
-
-            sf::Vector2f steering(0,0);
-            float enemySpeed = 110.f; 
-
-            if (!enemyPath.empty() && enemyWaypoint < (int)enemyPath.size()) {
-                sf::Vector2f target = enemyPath[enemyWaypoint];
-                sf::Vector2f dir = target - enemy.position;
-                float dist = std::hypot(dir.x, dir.y);
-
-                if (dist < 20.f) {
-                    enemyWaypoint++;
-                } else {
-                    dir /= dist;
-                    steering = dir * enemySpeed;
-                }
-            }
-
-            sf::Vector2f accel = (steering - enemy.velocity) * 4.0f;
-            enemy.velocity += accel * dt;
-            
-            float s = std::hypot(enemy.velocity.x, enemy.velocity.y);
-            if (s > enemySpeed) enemy.velocity = (enemy.velocity / s) * enemySpeed;
 
             enemy.position += enemy.velocity * dt;
             resolveKinematicCollisions(enemy, walls);
             enemyShape.setPosition(enemy.position);
-            
             enemyTrail.update(enemy.position);
         }
 
@@ -349,17 +245,16 @@ int main() {
 
         enemyTrail.draw(window);
 
+        // Draw threat ring around enemy, not player
         sf::CircleShape ring(THREAT_DIST);
         ring.setOrigin({THREAT_DIST, THREAT_DIST});
-        ring.setPosition(chara.getKinematic().position);
+        ring.setPosition(enemy.position);
         ring.setFillColor(sf::Color::Transparent);
         ring.setOutlineColor(sf::Color(255, 50, 50, 80));
         ring.setOutlineThickness(1);
         window.draw(ring);
 
         window.draw(enemyShape);
-        window.draw(goalShape);
-        window.draw(stationShape);
         chara.draw(window);
 
         window.display();

@@ -51,6 +51,9 @@ private:
     std::vector<sf::Vector2f> path;
     int currentWaypoint;
     float maxSpeed;
+    float wanderOrientation; // Added for better wander
+    float wanderOffset;      // Added for better wander
+    float wanderRadius;      // Added for better wander
 
 public:
     Character();
@@ -61,6 +64,7 @@ public:
     
     Kinematic getKinematic() const { return kinematic; }
     void setPath(const std::vector<sf::Vector2f>& p);
+    void setMaxSpeed(float speed); // Added to control speed
     
     void update(float dt, const Kinematic& target);
     void draw(sf::RenderWindow& win);
