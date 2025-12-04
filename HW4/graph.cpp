@@ -30,35 +30,29 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
     walls.clear();
 
     // --- 1. Define Geometry (Explicit Rectangles) ---
-    // Instead of big walls with holes, we draw the segments *around* the holes.
-    // Center intersection is at (600, 450)
-    
     float midX = 600.f;
     float midY = 450.f;
-    float thick = 20.f; // Wall thickness
+    float thick = 40.f; // Thicker walls for better visibility
 
-    // Vertical Wall (Top Segment) - Gap from 150 to 250
+    // Vertical Wall (Top Segment)
     walls.emplace_back(sf::FloatRect({midX - thick/2, 0.f}, {thick, 150.f}));
     walls.emplace_back(sf::FloatRect({midX - thick/2, 250.f}, {thick, midY - 250.f}));
 
-    // Vertical Wall (Bottom Segment) - Gap from 650 to 750
-    walls.emplace_back(sf::FloatRect({midX - thick/2, midY}, {thick, 200.f})); // 450 to 650
+    // Vertical Wall (Bottom Segment)
+    walls.emplace_back(sf::FloatRect({midX - thick/2, midY}, {thick, 200.f})); 
     walls.emplace_back(sf::FloatRect({midX - thick/2, 750.f}, {thick, 900.f - 750.f}));
 
-    // Horizontal Wall (Left Segment) - Gap from 150 to 250 (x)
+    // Horizontal Wall (Left Segment)
     walls.emplace_back(sf::FloatRect({0.f, midY - thick/2}, {150.f, thick}));
     walls.emplace_back(sf::FloatRect({250.f, midY - thick/2}, {midX - 250.f, thick}));
 
-    // Horizontal Wall (Right Segment) - Gap from 950 to 1050 (x)
-    walls.emplace_back(sf::FloatRect({midX, midY - thick/2}, {350.f, thick})); // 600 to 950
+    // Horizontal Wall (Right Segment)
+    walls.emplace_back(sf::FloatRect({midX, midY - thick/2}, {350.f, thick})); 
     walls.emplace_back(sf::FloatRect({1050.f, midY - thick/2}, {1200.f - 1050.f, thick}));
 
-    // --- 2. Obstacles (Blocks in rooms) ---
-    // Room 1 (TL): Block
+    // --- 2. Obstacles ---
     walls.emplace_back(sf::FloatRect({100.f, 100.f}, {80.f, 80.f}));
-    // Room 2 (TR): Long vertical barrier
     walls.emplace_back(sf::FloatRect({900.f, 100.f}, {40.f, 250.f}));
-    // Room 3 (BL): Horizontal Ledge
     walls.emplace_back(sf::FloatRect({150.f, 700.f}, {200.f, 40.f}));
 
     // --- 3. Build Navigation Mesh ---
@@ -69,13 +63,11 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
 
     int nodeCounter = 0;
 
-    // Create Nodes (only in empty space)
     for (int y = 0; y < ROWS; ++y) {
         for (int x = 0; x < COLS; ++x) {
-            // Position of node center
             sf::Vector2f pos(x * CELL_SIZE + CELL_SIZE/2.f, y * CELL_SIZE + CELL_SIZE/2.f);
             
-            // Checking rect (slightly smaller than cell to allow movement near walls)
+            // Intersection test logic
             sf::FloatRect cellRect(
                 {x * CELL_SIZE + 5.f, y * CELL_SIZE + 5.f}, 
                 {CELL_SIZE - 10.f, CELL_SIZE - 10.f}
@@ -105,10 +97,9 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
             int u = g.gridMap[y * COLS + x];
             if (u == -1) continue;
 
-            // 8-way connectivity for smoother paths
             int dirs[8][2] = {
-                {0,1}, {0,-1}, {1,0}, {-1,0}, // Orthogonal
-                {1,1}, {1,-1}, {-1,1}, {-1,-1} // Diagonal
+                {0,1}, {0,-1}, {1,0}, {-1,0}, 
+                {1,1}, {1,-1}, {-1,1}, {-1,-1} 
             };
 
             for (auto& d : dirs) {
@@ -119,20 +110,15 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
                     int v = g.gridMap[ny * COLS + nx];
                     if (v != -1) {
                         bool isDiag = (d[0] != 0 && d[1] != 0);
-                        
-                        // Safety check for diagonals: don't cut through "pinched" walls
-                        if (isDiag) {
+                        if (isDiag) { // Don't cut corners through walls
                             if (g.gridMap[y * COLS + nx] == -1 || g.gridMap[ny * COLS + x] == -1)
                                 continue;
                         }
-
-                        float weight = isDiag ? CELL_SIZE * 1.414f : CELL_SIZE;
-                        g.addEdge(u, v, weight);
+                        g.addEdge(u, v, isDiag ? CELL_SIZE * 1.414f : CELL_SIZE);
                     }
                 }
             }
         }
     }
-
     return g;
 }
