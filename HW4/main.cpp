@@ -12,13 +12,12 @@
 // --- PHYSICS HELPER ---
 void resolveCollisions(Character& chara, const std::vector<sf::FloatRect>& walls) {
     Kinematic k = chara.getKinematic();
-    float r = 10.f; // Agent radius
+    float r = 10.f; 
     sf::FloatRect agentBounds({k.position.x - r, k.position.y - r}, {r * 2.f, r * 2.f});
 
     for (const auto& w : walls) {
         std::optional<sf::FloatRect> intersection = w.findIntersection(agentBounds);
         if (intersection) {
-            // Push out in the direction of least overlap
             if (intersection->size.x < intersection->size.y) {
                 if (k.position.x < w.position.x) k.position.x -= intersection->size.x;
                 else k.position.x += intersection->size.x;
@@ -28,6 +27,7 @@ void resolveCollisions(Character& chara, const std::vector<sf::FloatRect>& walls
             }
         }
     }
+    // This now only updates position, preserving breadcrumbs
     chara.setPosition(k.position.x, k.position.y);
 }
 
@@ -36,7 +36,6 @@ std::unique_ptr<DTNode> buildHardcodedDT() {
     auto seek = std::make_unique<DTAction>(ActionType::SEEK_GOAL);
     auto recharge = std::make_unique<DTAction>(ActionType::RECHARGE);
     auto flee = std::make_unique<DTAction>(ActionType::FLEE_ENEMY);
-
     auto checkGoal = std::make_unique<DTDecision>("goalVisible", std::move(seek), std::move(wander));
     auto checkEnergy = std::make_unique<DTDecision>("energyLow", std::move(recharge), std::move(checkGoal));
     auto root = std::make_unique<DTDecision>("enemyNear", std::move(flee), std::move(checkEnergy));
@@ -44,24 +43,17 @@ std::unique_ptr<DTNode> buildHardcodedDT() {
 }
 
 int main() {
-    sf::RenderWindow window(sf::VideoMode({(unsigned int)WINDOW_WIDTH, (unsigned int)WINDOW_HEIGHT}), "HW4: 4 Room Environment");
+    sf::RenderWindow window(sf::VideoMode({(unsigned int)WINDOW_WIDTH, (unsigned int)WINDOW_HEIGHT}), "HW4: Breadcrumbs & Pathfinding");
     window.setFramerateLimit(60);
 
     // --- ENVIRONMENT ---
     std::vector<sf::FloatRect> walls;
     Graph graph = createFourRoomGraph(walls); 
     
-    // --- SETUP ENTITIES (Inside padded rooms) ---
-    // With 40px padding, safe zone starts around 100px.
-    // Window is 800x600. Mid is 400x300.
-    
-    // Room 1 (TL): ~200, 150
-    // Room 2 (TR): ~600, 150
-    // Room 3 (BL): ~200, 450
-    // Room 4 (BR): ~600, 450
-
+    // --- SETUP ENTITIES ---
     Character chara;
-    chara.setPosition(200.f, 150.f); 
+    // Use teleport for initial placement to ensure 0 velocity and clean state
+    chara.teleport(200.f, 150.f); 
 
     Kinematic enemy;
     enemy.position = {600.f, 450.f}; // Room 4
@@ -81,7 +73,6 @@ int main() {
     stationShape.setPosition(stationPos);
     stationShape.setOrigin({20.f, 20.f});
 
-    // --- AI STATE ---
     float energy = 100.0f;
     const float THREAT_DIST = 150.0f;
     const float GOAL_DIST = 300.0f;
@@ -96,12 +87,11 @@ int main() {
     float recordingTimer = 0.f;
     float pathUpdateTimer = 0.f;
 
-    std::cout << "--- STARTING SIMULATION ---" << std::endl;
+    std::cout << "--- STARTING ---" << std::endl;
     std::cout << "Phase 1: Recording. Click to manually pathfind." << std::endl;
 
     auto planPathTo = [&](sf::Vector2f target) {
         Metrics m;
-        // Basic bounds check (roughly inside padding)
         if (target.x < 40 || target.x > WINDOW_WIDTH-40 || target.y < 40 || target.y > WINDOW_HEIGHT-40) return;
 
         int startNode = graph.getNodeAt(chara.getKinematic().position.x, chara.getKinematic().position.y, 20.f);
@@ -116,7 +106,6 @@ int main() {
                 chara.setPath(points);
             }
         } else {
-            // Fallback seek
             chara.seek(target, 0.016f); 
         }
     };
@@ -212,7 +201,7 @@ int main() {
             enemy.position.y += (rand()%3 - 1)*1.5f;
         }
         
-        // Clamp Enemy inside walls
+        // Clamp Enemy
         if(enemy.position.x < 50) enemy.position.x = 50;
         if(enemy.position.x > WINDOW_WIDTH-50) enemy.position.x = WINDOW_WIDTH-50;
         if(enemy.position.y < 50) enemy.position.y = 50;

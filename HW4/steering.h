@@ -8,7 +8,6 @@
 const float PI = 3.14159265f;
 
 // Centralized Window Dimensions
-// Change these here, and the graph/window will scale automatically.
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
 
@@ -51,7 +50,11 @@ private:
 
 public:
     Character();
+    // Updates physics position only (preserves history)
     void setPosition(float x, float y);
+    // Fully resets character state (clears history & velocity)
+    void teleport(float x, float y);
+    
     Kinematic getKinematic() const { return kinematic; }
     void setPath(const std::vector<sf::Vector2f>& p);
     
