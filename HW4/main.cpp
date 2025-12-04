@@ -242,24 +242,6 @@ int main() {
     std::cout << "--- STARTING ---" << std::endl;
     std::cout << "Player is AI-controlled." << std::endl;
 
-    auto planPathTo = [&](sf::Vector2f target) {
-        Metrics m;
-        int startNode = graph.getNodeAt(chara.getKinematic().position.x, chara.getKinematic().position.y, 20.f);
-        int endNode = graph.getNodeAt(target.x, target.y, 20.f);
-        
-        if (startNode != -1 && endNode != -1) {
-            std::vector<int> pathIndices = aStar(graph, startNode, endNode, euclideanHeur, m);
-            if (!pathIndices.empty()) {
-                std::vector<sf::Vector2f> points;
-                for (int idx : pathIndices) points.push_back(graph.positions[idx]);
-                points.push_back(target);
-                chara.setPath(points);
-            }
-        } else {
-            chara.seek(target, 0.016f); 
-        }
-    };
-
     // Helper to Reset Game State
     auto resetGame = [&]() {
         std::cout << ">>> CAUGHT! Resetting positions... <<<" << std::endl;
@@ -335,7 +317,7 @@ int main() {
                     case ActionType::SEEK_CENTER:
                         // Only plan a new path every so often to avoid constant recalculation
                         if (pathUpdateTimer <= 0.f) { 
-                            planPathTo(CENTER_SCREEN); 
+                            planPath(chara, graph, CENTER_SCREEN); 
                             pathUpdateTimer = 1.5f; 
                         }
                         break;
@@ -345,7 +327,7 @@ int main() {
                         break;
                     case ActionType::HIDE:
                         if (state.canHide) {
-                             planPathTo(hidingSpot);
+                             planPath(chara, graph, hidingSpot);
                         } else {
                              chara.flee(enemy.getKinematic().position, dt);
                         }
@@ -355,7 +337,7 @@ int main() {
                         if (chara.isPathComplete()) {
                             if (graph.numVertices > 0) {
                                 int r = std::rand() % graph.numVertices;
-                                planPathTo(graph.positions[r]);
+                                planPath(chara, graph, graph.positions[r]);
                             }
                         }
                         break;
