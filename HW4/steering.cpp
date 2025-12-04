@@ -1,5 +1,7 @@
 #include "steering.h"
 #include <iostream>
+#include <algorithm> // For std::max, std::min
+#include <cstdint>   // For std::uint8_t
 
 // --- Utilities ---
 float mapToRange(float rotation) {
@@ -40,7 +42,10 @@ void Breadcrumb::draw(sf::RenderWindow &win) {
         sf::Vector2f p = temp.front(); temp.pop();
         sf::CircleShape dot(2);
         dot.setPosition(p);
-        dot.setFillColor(sf::Color(color.r, color.g, color.b, (sf::Uint8)alpha));
+        
+        // Fix: Use std::uint8_t instead of sf::Uint8 for SFML 3.0
+        dot.setFillColor(sf::Color(color.r, color.g, color.b, static_cast<std::uint8_t>(alpha)));
+        
         win.draw(dot);
         alpha = std::min(255.f, alpha + inc);
     }
@@ -60,7 +65,6 @@ Character::Character() : breadcrumbs(200, 5, sf::Color::Cyan), currentWaypoint(0
     shape.setFillColor(sf::Color::Cyan);
     shape.setOutlineColor(sf::Color::White);
     shape.setOutlineThickness(1);
-    // SFML 3.0 Fix: setOrigin takes Vector2f
     shape.setOrigin({0, 0}); 
 }
 
@@ -120,7 +124,8 @@ void Character::wander(float dt) {
     update(dt, kinematic);
 }
 
-void Character::update(float dt, const Kinematic& target) {
+// Fix: Commented out unused target parameter
+void Character::update(float dt, const Kinematic& /*target*/) {
     // 1. Update Position
     kinematic.position += kinematic.velocity * dt;
     kinematic.orientation += kinematic.rotation * dt;
@@ -142,8 +147,10 @@ void Character::update(float dt, const Kinematic& target) {
     // 4. Update Visuals
     breadcrumbs.update(kinematic.position);
     shape.setPosition(kinematic.position);
-    // SFML uses degrees
-    shape.setRotation(kinematic.orientation * 180.f / PI);
+    
+    // Fix: Use sf::radians to create an sf::Angle for SFML 3.0
+    // kinematic.orientation is already in radians
+    shape.setRotation(sf::radians(kinematic.orientation));
 }
 
 void Character::draw(sf::RenderWindow &win) {
