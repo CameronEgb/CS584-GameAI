@@ -9,9 +9,13 @@
 #include <optional>
 #include <cmath>
 
+// --- CONSTANTS ---
+const sf::Vector2f AGENT_START_POS(200.f, 150.f);
+const sf::Vector2f ENEMY_START_POS(600.f, 450.f);
+
 // --- PHYSICS HELPER ---
 void resolveKinematicCollisions(Kinematic& k, const std::vector<sf::FloatRect>& walls) {
-    float r = 10.f; // Radius
+    float r = 10.f; 
     sf::FloatRect bounds({k.position.x - r, k.position.y - r}, {r * 2.f, r * 2.f});
 
     for (const auto& w : walls) {
@@ -50,26 +54,25 @@ int main() {
     
     // --- SETUP ENTITIES ---
     Character chara;
-    chara.teleport(200.f, 150.f); 
+    chara.teleport(AGENT_START_POS.x, AGENT_START_POS.y); 
 
     Kinematic enemy;
-    enemy.position = {600.f, 450.f}; // Room 4
+    enemy.position = ENEMY_START_POS;
     enemy.velocity = {0.f, 0.f};
     
-    // NEW: Enemy Breadcrumbs (Red, fade slightly slower than agent)
     Breadcrumb enemyTrail(150, 5, sf::Color::Red);
 
     sf::RectangleShape enemyShape(sf::Vector2f(30.f, 30.f));
     enemyShape.setFillColor(sf::Color::Red);
     enemyShape.setOrigin({15.f, 15.f});
 
-    sf::Vector2f goalPos(600.f, 150.f); // Room 2
+    sf::Vector2f goalPos(600.f, 150.f); 
     sf::CircleShape goalShape(15);
     goalShape.setFillColor(sf::Color::Green);
     goalShape.setPosition(goalPos);
     goalShape.setOrigin({15.f, 15.f});
 
-    sf::Vector2f stationPos(200.f, 450.f); // Room 3
+    sf::Vector2f stationPos(200.f, 450.f); 
     sf::RectangleShape stationShape(sf::Vector2f(40.f, 40.f));
     stationShape.setFillColor(sf::Color::Blue);
     stationShape.setPosition(stationPos);
@@ -134,6 +137,25 @@ int main() {
         }
     };
 
+    // Helper to Reset Game State
+    auto resetGame = [&]() {
+        std::cout << ">>> CAUGHT! Resetting positions... <<<" << std::endl;
+        
+        // Reset Agent
+        chara.teleport(AGENT_START_POS.x, AGENT_START_POS.y);
+        energy = 100.0f; // Reset energy too
+
+        // Reset Enemy
+        enemy.position = ENEMY_START_POS;
+        enemy.velocity = {0.f, 0.f};
+        enemyPath.clear();
+        enemyTrail.clear();
+
+        // Optional: Go back to WARMUP to give the player a breather
+        mode = WARMUP;
+        stateTimer = 0.f;
+    };
+
     while (window.isOpen()) {
         float dt = clock.restart().asSeconds();
         if (dt > 0.1f) dt = 0.1f; 
@@ -155,9 +177,12 @@ int main() {
         if (mode == WARMUP) {
             stateTimer += dt;
             if (stateTimer > 1.0f) {
-                mode = RECORDING;
+                // If we have a learned tree, go to ACTING, else RECORDING
+                if (learnedDT) mode = ACTING;
+                else mode = RECORDING;
+                
                 stateTimer = 0.f;
-                std::cout << "Phase 1: Recording..." << std::endl;
+                std::cout << "--- GO! ---" << std::endl;
             }
         }
         else {
@@ -166,6 +191,13 @@ int main() {
                                       chara.getKinematic().position.y - enemy.position.y);
             float dGoal = std::hypot(chara.getKinematic().position.x - goalPos.x,
                                      chara.getKinematic().position.y - goalPos.y);
+
+            // *** GAME OVER CHECK ***
+            if (dEnemy < 30.f) { // Collision threshold (30px)
+                resetGame();
+                // Skip the rest of the frame to prevent weird movement
+                continue; 
+            }
 
             state.enemyNear = (dEnemy < THREAT_DIST);
             state.energyLow = (energy < 30.0f);
@@ -230,50 +262,52 @@ int main() {
         chara.setPosition(kChar.position.x, kChar.position.y);
 
         // --- 3. ENEMY INTELLIGENCE ---
-        enemyRepathTimer -= dt;
-        bool chase = (std::hypot(chara.getKinematic().position.x - enemy.position.x, 
-                                 chara.getKinematic().position.y - enemy.position.y) < 300.f);
+        // Only run enemy logic if not in warmup
+        if (mode != WARMUP) {
+            enemyRepathTimer -= dt;
+            bool chase = (std::hypot(chara.getKinematic().position.x - enemy.position.x, 
+                                     chara.getKinematic().position.y - enemy.position.y) < 300.f);
 
-        if (chase) {
-            if (enemyRepathTimer <= 0.f) {
-                planEnemyPath(chara.getKinematic().position);
-                enemyRepathTimer = 0.5f;
-            }
-        } else {
-            if (enemyPath.empty() || enemyWaypoint >= (int)enemyPath.size()) {
-                int rNode = rand() % graph.positions.size();
-                planEnemyPath(graph.positions[rNode]);
-            }
-        }
-
-        sf::Vector2f steering(0,0);
-        float enemySpeed = 110.f; // Slower Enemy
-
-        if (!enemyPath.empty() && enemyWaypoint < (int)enemyPath.size()) {
-            sf::Vector2f target = enemyPath[enemyWaypoint];
-            sf::Vector2f dir = target - enemy.position;
-            float dist = std::hypot(dir.x, dir.y);
-
-            if (dist < 20.f) {
-                enemyWaypoint++;
+            if (chase) {
+                if (enemyRepathTimer <= 0.f) {
+                    planEnemyPath(chara.getKinematic().position);
+                    enemyRepathTimer = 0.5f;
+                }
             } else {
-                dir /= dist;
-                steering = dir * enemySpeed;
+                if (enemyPath.empty() || enemyWaypoint >= (int)enemyPath.size()) {
+                    int rNode = rand() % graph.positions.size();
+                    planEnemyPath(graph.positions[rNode]);
+                }
             }
+
+            sf::Vector2f steering(0,0);
+            float enemySpeed = 110.f; 
+
+            if (!enemyPath.empty() && enemyWaypoint < (int)enemyPath.size()) {
+                sf::Vector2f target = enemyPath[enemyWaypoint];
+                sf::Vector2f dir = target - enemy.position;
+                float dist = std::hypot(dir.x, dir.y);
+
+                if (dist < 20.f) {
+                    enemyWaypoint++;
+                } else {
+                    dir /= dist;
+                    steering = dir * enemySpeed;
+                }
+            }
+
+            sf::Vector2f accel = (steering - enemy.velocity) * 4.0f;
+            enemy.velocity += accel * dt;
+            
+            float s = std::hypot(enemy.velocity.x, enemy.velocity.y);
+            if (s > enemySpeed) enemy.velocity = (enemy.velocity / s) * enemySpeed;
+
+            enemy.position += enemy.velocity * dt;
+            resolveKinematicCollisions(enemy, walls);
+            enemyShape.setPosition(enemy.position);
+            
+            enemyTrail.update(enemy.position);
         }
-
-        sf::Vector2f accel = (steering - enemy.velocity) * 4.0f;
-        enemy.velocity += accel * dt;
-        
-        float s = std::hypot(enemy.velocity.x, enemy.velocity.y);
-        if (s > enemySpeed) enemy.velocity = (enemy.velocity / s) * enemySpeed;
-
-        enemy.position += enemy.velocity * dt;
-        resolveKinematicCollisions(enemy, walls);
-        enemyShape.setPosition(enemy.position);
-        
-        // UPDATE ENEMY BREADCRUMBS
-        enemyTrail.update(enemy.position);
 
         // --- DRAW ---
         window.clear(sf::Color(20, 20, 25));
@@ -287,7 +321,6 @@ int main() {
             window.draw(r);
         }
 
-        // Draw Enemy Trail
         enemyTrail.draw(window);
 
         sf::CircleShape ring(THREAT_DIST);
