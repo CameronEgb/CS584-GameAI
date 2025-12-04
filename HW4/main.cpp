@@ -44,6 +44,36 @@ bool hasLineOfSight(sf::Vector2f start, sf::Vector2f end, const std::vector<sf::
     return true;
 }
 
+sf::Vector2f findHidingSpot(const sf::Vector2f& seekerPos, const sf::Vector2f& threatPos, const std::vector<sf::FloatRect>& walls) {
+    sf::Vector2f bestSpot = seekerPos;
+    float minDist = -1.f;
+    bool found = false;
+
+    for (const auto& wall : walls) {
+        float offset = 40.f;
+        std::vector<sf::Vector2f> candidates = {
+            {wall.position.x - offset, wall.position.y - offset},
+            {wall.position.x + wall.size.x + offset, wall.position.y - offset},
+            {wall.position.x + wall.size.x + offset, wall.position.y + wall.size.y + offset},
+            {wall.position.x - offset, wall.position.y + wall.size.y + offset}
+        };
+
+        for (const auto& p : candidates) {
+            if (p.x < 20.f || p.x > WINDOW_WIDTH - 20.f || p.y < 20.f || p.y > WINDOW_HEIGHT - 20.f) continue;
+            
+            if (!hasLineOfSight(p, threatPos, walls)) {
+                float d = std::hypot(p.x - seekerPos.x, p.y - seekerPos.y);
+                if (!found || d < minDist) {
+                    minDist = d;
+                    bestSpot = p;
+                    found = true;
+                }
+            }
+        }
+    }
+    return found ? bestSpot : sf::Vector2f(-1.f, -1.f);
+}
+
 // --- PHYSICS HELPER ---
 void resolveKinematicCollisions(Kinematic& k, const std::vector<sf::FloatRect>& walls) {
     float r = 10.f; 
@@ -69,21 +99,25 @@ std::unique_ptr<DTNode> buildPlayerDT() {
     auto flee = std::make_unique<DTAction>(ActionType::FLEE_ENEMY);
     auto seek_center = std::make_unique<DTAction>(ActionType::SEEK_CENTER);
     auto attack = std::make_unique<DTAction>(ActionType::ATTACK);
+    auto hide = std::make_unique<DTAction>(ActionType::HIDE);
 
-    // If near a wall, seek center. Otherwise, wander.
+    // If can hide, hide. Else flee.
+    auto checkCanHide = std::make_unique<DTDecision>("canHide", std::move(hide), std::move(flee));
+
+    // If can see enemy (and enemy is near), try to hide. Else (hidden but near), attack.
+    auto checkVisibility = std::make_unique<DTDecision>("canSeeEnemy", std::move(checkCanHide), std::move(attack));
+
+    // If near wall, seek center. Else wander.
     auto checkNearWall = std::make_unique<DTDecision>("isNearWall", std::move(seek_center), std::move(wander));
-    
-    // If can see enemy, attack. Otherwise, check for walls.
-    auto checkVisibility = std::make_unique<DTDecision>("canSeeEnemy", std::move(attack), std::move(checkNearWall));
 
-    // If enemy is near, flee. Otherwise, check visibility.
-    auto root = std::make_unique<DTDecision>("enemyNear", std::move(flee), std::move(checkVisibility));
+    // Root: Enemy Near?
+    auto root = std::make_unique<DTDecision>("enemyNear", std::move(checkVisibility), std::move(checkNearWall));
 
     return root;
 }
 
 // Behavior Tree for the ENEMY
-std::unique_ptr<BTNode> buildEnemyBT() {
+std::unique_ptr<BTNode> buildEnemyBT(DataRecorder& recorder) {
     auto root = std::make_unique<BTSelector>();
     
     // Sequence: See Player -> Chase
@@ -95,7 +129,14 @@ std::unique_ptr<BTNode> buildEnemyBT() {
     }));
     
     // Action: Chase
-    chaseSeq->addChild(std::make_unique<BTAction>([](EnemyContext& ctx) {
+    chaseSeq->addChild(std::make_unique<BTAction>([&recorder](EnemyContext& ctx) {
+        WorldState state;
+        state.canSeeEnemy = true; 
+        state.enemyNear = (std::hypot(ctx.player.position.x - ctx.enemy.position.x, ctx.player.position.y - ctx.enemy.position.y) < 200.f);
+        state.isNearWall = false; 
+        state.canHide = false; // Enemy doesn't hide
+        recorder.record(state, ActionType::CHASE);
+
         sf::Vector2f steering = ctx.player.position - ctx.enemy.position;
         float dist = std::hypot(steering.x, steering.y);
         if (dist > 0.1f) steering /= dist;
@@ -113,7 +154,14 @@ std::unique_ptr<BTNode> buildEnemyBT() {
     root->addChild(std::move(chaseSeq));
     
     // Action: Search (Seek Center)
-    root->addChild(std::make_unique<BTAction>([](EnemyContext& ctx) {
+    root->addChild(std::make_unique<BTAction>([&recorder](EnemyContext& ctx) {
+        WorldState state;
+        state.canSeeEnemy = false; 
+        state.enemyNear = (std::hypot(ctx.player.position.x - ctx.enemy.position.x, ctx.player.position.y - ctx.enemy.position.y) < 200.f);
+        state.isNearWall = false;
+        state.canHide = false;
+        recorder.record(state, ActionType::SEEK_CENTER);
+
         sf::Vector2f center(400.f, 300.f);
         sf::Vector2f steering = center - ctx.enemy.position;
         float dist = std::hypot(steering.x, steering.y);
@@ -127,6 +175,30 @@ std::unique_ptr<BTNode> buildEnemyBT() {
     }));
     
     return root;
+}
+
+void moveEnemyChase(Kinematic& enemy, const sf::Vector2f& targetPos, float dt) {
+    sf::Vector2f steering = targetPos - enemy.position;
+    float dist = std::hypot(steering.x, steering.y);
+    if (dist > 0.1f) steering /= dist;
+    
+    float enemySpeed = 110.f;
+    sf::Vector2f accel = (steering * enemySpeed - enemy.velocity) * 4.0f;
+    enemy.velocity += accel * dt;
+    
+    float s = std::hypot(enemy.velocity.x, enemy.velocity.y);
+    if (s > enemySpeed) enemy.velocity = (enemy.velocity / s) * enemySpeed;
+}
+
+void moveEnemySearch(Kinematic& enemy, float dt) {
+    sf::Vector2f center(400.f, 300.f);
+    sf::Vector2f steering = center - enemy.position;
+    float dist = std::hypot(steering.x, steering.y);
+    if (dist > 0.1f) steering /= dist;
+    
+    float enemySpeed = 60.f; 
+    sf::Vector2f accel = (steering * enemySpeed - enemy.velocity) * 2.0f;
+    enemy.velocity += accel * dt;
 }
 
 int main() {
@@ -160,7 +232,8 @@ int main() {
     const float FLEE_SPEED = 250.f;
 
     auto playerDT = buildPlayerDT();
-    auto enemyBT = buildEnemyBT();
+    auto enemyBT = buildEnemyBT(recorder);
+    std::unique_ptr<DTNode> enemyDT = nullptr;
 
     sf::Clock clock;
     enum Mode { WARMUP, ACTING };
@@ -212,8 +285,8 @@ int main() {
             
             if (const auto* keyPress = event->getIf<sf::Event::KeyPressed>()) {
                 if (keyPress->code == sf::Keyboard::Key::L) {
-                    std::cout << "Learning DT from data..." << std::endl;
-                    playerDT = learnDT("training_data.csv");
+                    std::cout << "Learning ENEMY DT from data..." << std::endl;
+                    enemyDT = learnDT("training_data.csv");
                 }
             }
         }
@@ -242,13 +315,15 @@ int main() {
                 state.enemyNear = (dEnemy < THREAT_DIST);
                 state.canSeeEnemy = hasLineOfSight(chara.getKinematic().position, enemy.position, walls);
                 
+                sf::Vector2f hidingSpot = findHidingSpot(chara.getKinematic().position, enemy.position, walls);
+                state.canHide = (hidingSpot.x != -1.f);
+                
                 const auto& pos = chara.getKinematic().position;
                 state.isNearWall = pos.x < WALL_PROXIMITY || pos.x > WINDOW_WIDTH - WALL_PROXIMITY ||
                                    pos.y < WALL_PROXIMITY || pos.y > WINDOW_HEIGHT - WALL_PROXIMITY;
 
                 // Make decisions for the player character
                 ActionType action = playerDT->makeDecision(state);
-                recorder.record(state, action);
                 
                 // Adjust speed based on threat
                 if (state.enemyNear) {
@@ -273,6 +348,13 @@ int main() {
                     case ActionType::ATTACK:
                         chara.setPath({});
                         chara.attack(enemy.position, dt);
+                        break;
+                    case ActionType::HIDE:
+                        if (state.canHide) {
+                             planPathTo(hidingSpot);
+                        } else {
+                             chara.flee(enemy.position, dt);
+                        }
                         break;
                     case ActionType::WANDER:
                         // Smart Wander: Pick a random node and pathfind
@@ -300,9 +382,19 @@ int main() {
 
         // --- 3. ENEMY INTELLIGENCE (Behavior Tree) ---
         if (mode != WARMUP) {
-            // Execute Behavior Tree
-            EnemyContext ctx { enemy, chara.getKinematic(), walls, dt };
-            enemyBT->tick(ctx);
+            if (enemyDT) {
+                 WorldState state;
+                 state.canSeeEnemy = hasLineOfSight(enemy.position, chara.getKinematic().position, walls);
+                 state.enemyNear = false; state.isNearWall = false; state.canHide = false;
+
+                 ActionType act = enemyDT->makeDecision(state);
+                 if (act == ActionType::CHASE) moveEnemyChase(enemy, chara.getKinematic().position, dt);
+                 else moveEnemySearch(enemy, dt);
+            } else {
+                // Execute Behavior Tree
+                EnemyContext ctx { enemy, chara.getKinematic(), walls, dt };
+                enemyBT->tick(ctx);
+            }
 
             enemy.position += enemy.velocity * dt;
             resolveKinematicCollisions(enemy, walls);

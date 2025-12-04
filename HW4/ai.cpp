@@ -15,6 +15,7 @@ ActionType DTDecision::makeDecision(const WorldState& state) {
     if (attribute == "enemyNear") val = state.enemyNear;
     else if (attribute == "isNearWall") val = state.isNearWall;
     else if (attribute == "canSeeEnemy") val = state.canSeeEnemy;
+    else if (attribute == "canHide") val = state.canHide;
 
     if (val) return trueBranch->makeDecision(state);
     else return falseBranch->makeDecision(state);

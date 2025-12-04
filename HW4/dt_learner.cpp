@@ -136,10 +136,10 @@ std::unique_ptr<DTNode> learnDT(const std::string& filename) {
     std::ifstream inFile(filename);
     if (!inFile.is_open()) {
         std::cerr << "Could not open " << filename << " for learning. Returning default tree.\n";
-        // Return a simple default tree
-        auto wander = std::make_unique<DTAction>(ActionType::WANDER);
-        auto flee = std::make_unique<DTAction>(ActionType::FLEE_ENEMY);
-        auto root = std::make_unique<DTDecision>("enemyNear", std::move(flee), std::move(wander));
+        // Return a simple default tree for ENEMY
+        auto chase = std::make_unique<DTAction>(ActionType::CHASE);
+        auto search = std::make_unique<DTAction>(ActionType::SEEK_CENTER);
+        auto root = std::make_unique<DTDecision>("canSeeEnemy", std::move(chase), std::move(search));
         return root;
     }
 
