@@ -1,5 +1,6 @@
 #pragma once
 #include "steering.h" // For Kinematic
+#include "graph.h"    // For Graph
 #include <vector>
 #include <memory>
 #include <functional>

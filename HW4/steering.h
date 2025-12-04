@@ -64,7 +64,7 @@ public:
     // Fully resets character state (clears history & velocity)
     void teleport(float x, float y);
     
-    Kinematic getKinematic() const { return kinematic; }
+    const Kinematic& getKinematic() const { return kinematic; }
     Kinematic& getKinematicRef() { return kinematic; } // Added mutable accessor
     void setPath(const std::vector<sf::Vector2f>& p);
     void setMaxSpeed(float speed); // Added to control speed
