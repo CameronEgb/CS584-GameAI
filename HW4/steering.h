@@ -6,8 +6,11 @@
 #include <random>
 
 const float PI = 3.14159265f;
-const int WINDOW_WIDTH = 1200;
-const int WINDOW_HEIGHT = 900;
+
+// Centralized Window Dimensions
+// Change these here, and the graph/window will scale automatically.
+const int WINDOW_WIDTH = 800;
+const int WINDOW_HEIGHT = 600;
 
 struct Kinematic {
     sf::Vector2f position;
@@ -31,10 +34,10 @@ class Breadcrumb {
     sf::Color color;
     std::queue<sf::Vector2f> q;
 public:
-    Breadcrumb(int maxCrumbs_ = 100, int dropInterval_ = 10, sf::Color c = sf::Color::White);
+    Breadcrumb(int maxCrumbs_ = 200, int dropInterval_ = 5, sf::Color c = sf::Color::White);
     void update(const sf::Vector2f& pos);
     void draw(sf::RenderWindow& win);
-    void clear(); // Added to satisfy potential calls
+    void clear();
 };
 
 class Character {
@@ -52,11 +55,9 @@ public:
     Kinematic getKinematic() const { return kinematic; }
     void setPath(const std::vector<sf::Vector2f>& p);
     
-    // Core updates
     void update(float dt, const Kinematic& target);
     void draw(sf::RenderWindow& win);
     
-    // Explicit movement commands for AI
     void wander(float dt);
     void seek(sf::Vector2f targetPos, float dt);
     void flee(sf::Vector2f targetPos, float dt);

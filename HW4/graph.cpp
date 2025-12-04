@@ -21,55 +21,69 @@ int Graph::getNodeAt(float x, float y, float cellSize) {
 }
 
 Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
-    // Dynamic dimensions based on constants
     const float W = static_cast<float>(WINDOW_WIDTH);
     const float H = static_cast<float>(WINDOW_HEIGHT);
     
+    // Use a slightly smaller cell size to navigate tighter spaces if needed
     const float CELL_SIZE = 20.f; 
     const int COLS = WINDOW_WIDTH / (int)CELL_SIZE;
     const int ROWS = WINDOW_HEIGHT / (int)CELL_SIZE;
 
     walls.clear();
 
+    // Define a padding so walls are VISIBLE and INSIDE the window
+    float padding = 40.f; 
     float thick = 20.f;
+
+    // The playable area is now [padding, W-padding] x [padding, H-padding]
+    float left = padding;
+    float right = W - padding;
+    float top = padding;
+    float bottom = H - padding;
+
     float midX = W / 2.f;
     float midY = H / 2.f;
 
-    // --- 1. Boundary Walls (Edges of Screen) ---
-    walls.emplace_back(sf::FloatRect({0.f, 0.f}, {W, thick}));            // Top
-    walls.emplace_back(sf::FloatRect({0.f, H - thick}, {W, thick}));      // Bottom
-    walls.emplace_back(sf::FloatRect({0.f, thick}, {thick, H - 2*thick})); // Left
-    walls.emplace_back(sf::FloatRect({W - thick, thick}, {thick, H - 2*thick})); // Right
+    // --- 1. Boundary Walls (Inset from screen edges) ---
+    // Top Wall
+    walls.emplace_back(sf::FloatRect({left, top}, {right - left, thick}));
+    // Bottom Wall
+    walls.emplace_back(sf::FloatRect({left, bottom - thick}, {right - left, thick}));
+    // Left Wall
+    walls.emplace_back(sf::FloatRect({left, top}, {thick, bottom - top}));
+    // Right Wall
+    walls.emplace_back(sf::FloatRect({right - thick, top}, {thick, bottom - top}));
 
     // --- 2. Room Dividers (Cross with Doorways) ---
-    // Doorway size
-    float doorSize = 100.f;
+    float doorSize = 100.f; // Gap size
 
-    // Vertical Wall (Center X)
-    // Top segment
-    walls.emplace_back(sf::FloatRect({midX - thick/2, 0.f}, {thick, midY - doorSize/2}));
-    // Bottom segment
-    walls.emplace_back(sf::FloatRect({midX - thick/2, midY + doorSize/2}, {thick, H - (midY + doorSize/2)}));
+    // Vertical Divider (Mid X)
+    // Top Segment
+    walls.emplace_back(sf::FloatRect({midX - thick/2, top}, {thick, (midY - doorSize/2) - top}));
+    // Bottom Segment
+    walls.emplace_back(sf::FloatRect({midX - thick/2, midY + doorSize/2}, {thick, bottom - (midY + doorSize/2)}));
 
-    // Horizontal Wall (Center Y)
-    // Left segment
-    walls.emplace_back(sf::FloatRect({0.f, midY - thick/2}, {midX - doorSize/2, thick}));
-    // Right segment
-    walls.emplace_back(sf::FloatRect({midX + doorSize/2, midY - thick/2}, {W - (midX + doorSize/2), thick}));
+    // Horizontal Divider (Mid Y)
+    // Left Segment
+    walls.emplace_back(sf::FloatRect({left, midY - thick/2}, {(midX - doorSize/2) - left, thick}));
+    // Right Segment
+    walls.emplace_back(sf::FloatRect({midX + doorSize/2, midY - thick/2}, {right - (midX + doorSize/2), thick}));
 
-    // --- 3. Obstacles (1 per room, centered in quadrant) ---
-    float obsSize = 60.f;
-    float qW = W / 2.f; // Quadrant Width
-    float qH = H / 2.f; // Quadrant Height
+    // --- 3. Obstacles (Centered in quadrants) ---
+    float obsSize = 50.f;
+    float qW = (right - left) / 2.f;
+    float qH = (bottom - top) / 2.f;
 
-    // Room 1 (TL)
-    walls.emplace_back(sf::FloatRect({qW/2 - obsSize/2, qH/2 - obsSize/2}, {obsSize, obsSize}));
-    // Room 2 (TR)
-    walls.emplace_back(sf::FloatRect({midX + qW/2 - obsSize/2, qH/2 - obsSize/2}, {obsSize, obsSize}));
-    // Room 3 (BL)
-    walls.emplace_back(sf::FloatRect({qW/2 - obsSize/2, midY + qH/2 - obsSize/2}, {obsSize, obsSize}));
-    // Room 4 (BR)
-    walls.emplace_back(sf::FloatRect({midX + qW/2 - obsSize/2, midY + qH/2 - obsSize/2}, {obsSize, obsSize}));
+    // Calculate centers of the 4 rooms
+    float c1x = left + qW/2.f; float c1y = top + qH/2.f;
+    float c2x = midX + qW/2.f; float c2y = top + qH/2.f;
+    float c3x = left + qW/2.f; float c3y = midY + qH/2.f;
+    float c4x = midX + qW/2.f; float c4y = midY + qH/2.f;
+
+    walls.emplace_back(sf::FloatRect({c1x - obsSize/2, c1y - obsSize/2}, {obsSize, obsSize}));
+    walls.emplace_back(sf::FloatRect({c2x - obsSize/2, c2y - obsSize/2}, {obsSize, obsSize}));
+    walls.emplace_back(sf::FloatRect({c3x - obsSize/2, c3y - obsSize/2}, {obsSize, obsSize}));
+    walls.emplace_back(sf::FloatRect({c4x - obsSize/2, c4y - obsSize/2}, {obsSize, obsSize}));
 
     // --- 4. Build Navigation Mesh ---
     Graph g(0, true);
@@ -83,7 +97,7 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
         for (int x = 0; x < COLS; ++x) {
             sf::Vector2f pos(x * CELL_SIZE + CELL_SIZE/2.f, y * CELL_SIZE + CELL_SIZE/2.f);
             
-            // Check collision with slightly inflated rect to buffer nodes from walls
+            // Check collision with inflated rect
             sf::FloatRect bufferRect(
                 {pos.x - 10.f, pos.y - 10.f}, 
                 {20.f, 20.f}
