@@ -459,8 +459,19 @@ int main() {
                         }
                         break;
                     case ActionType::WANDER:
-                        chara.setPath({});
-                        chara.wander(dt);
+                        // Graph-Based Wander: Pick a random node and pathfind
+                        // This avoids local optima (getting stuck in corners/bouncing)
+                        if (chara.isPathComplete()) {
+                            if (graph.numVertices > 0) {
+                                // Pick a random target node that isn't the current one
+                                int r = std::rand() % graph.numVertices;
+                                sf::Vector2f target = graph.positions[r];
+                                
+                                // Plan path using A*
+                                planPathTo(target);
+                            }
+                        }
+                        // If path exists, Character::update automatically follows it.
                         break;
                     default: 
                         chara.stop();
