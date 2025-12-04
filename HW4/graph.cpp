@@ -44,6 +44,10 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
     float midX = W / 2.f;
     float midY = H / 2.f;
 
+    float qW = (right - left) / 2.f;
+    float qH = (bottom - top) / 2.f;
+    float obsSize = 50.f;
+
     // --- 1. Boundary Walls (Inset from screen edges) ---
     // Top Wall
     walls.emplace_back(sf::FloatRect({left, top}, {right - left, thick}));
@@ -80,10 +84,6 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
     walls.emplace_back(sf::FloatRect({rightDoorX + doorSize/2, midY - thick/2}, {right - (rightDoorX + doorSize/2), thick}));
 
     // --- 3. Obstacles (Centered in quadrants) ---
-    float obsSize = 50.f;
-    float qW = (right - left) / 2.f;
-    float qH = (bottom - top) / 2.f;
-
     // Calculate centers of the 4 rooms
     float c1x = left + qW/2.f; float c1y = top + qH/2.f;
     float c2x = midX + qW/2.f; float c2y = top + qH/2.f;
