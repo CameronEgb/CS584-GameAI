@@ -139,7 +139,7 @@ std::unique_ptr<DTNode> buildPlayerDT() {
 std::unique_ptr<BTNode> buildEnemyBT(DataRecorder& recorder) {
     auto root = std::make_unique<BTSelector>();
     
-    // Sequence: See Player -> Chase
+    // --- 1. CHASE SEQUENCE ---
     auto chaseSeq = std::make_unique<BTSequence>();
     
     // Condition: Can See Player
@@ -149,6 +149,8 @@ std::unique_ptr<BTNode> buildEnemyBT(DataRecorder& recorder) {
     
     // Action: Chase
     chaseSeq->addChild(std::make_unique<BTAction>([&recorder](EnemyContext& ctx) {
+        ctx.danceTimer = 0.f; // Stop dancing if we see the player
+        
         WorldState state;
         state.canSeeEnemy = true; 
         state.enemyNear = (std::hypot(ctx.player.position.x - ctx.enemy.getKinematic().position.x, ctx.player.position.y - ctx.enemy.getKinematic().position.y) < 200.f);
@@ -157,21 +159,55 @@ std::unique_ptr<BTNode> buildEnemyBT(DataRecorder& recorder) {
         recorder.record(state, ActionType::CHASE);
 
         moveEnemyChase(ctx.enemy, ctx.player.position, ctx.graph, ctx.walls, ctx.dt);
-        
         return BTStatus::SUCCESS;
     }));
     
     root->addChild(std::move(chaseSeq));
     
-    // Action: Search (Seek Center)
+    // --- 2. DANCE SEQUENCE ---
+    auto danceSeq = std::make_unique<BTSequence>();
+
+    // Condition: Should Dance? (Active timer OR random chance)
+    danceSeq->addChild(std::make_unique<BTCondition>([](EnemyContext& ctx) {
+        if (ctx.danceTimer > 0.f) return true; // Already dancing
+        
+        // 0.5% chance per tick to start dancing if not already
+        if ((rand() % 1000) < 5) {
+            ctx.danceTimer = 1.5f; // Dance for 1.5 seconds
+            return true;
+        }
+        return false;
+    }));
+
+    // Action: Dance (Spin)
+    danceSeq->addChild(std::make_unique<BTAction>([&recorder](EnemyContext& ctx) {
+        ctx.danceTimer -= ctx.dt;
+        
+        // Spin behavior
+        Kinematic& k = ctx.enemy.getKinematicRef();
+        k.velocity = {0.f, 0.f}; // Stop moving
+        k.rotation = 15.f; // Fast spin
+        k.orientation += k.rotation * ctx.dt; // Apply manually since we might have stopped physics updates for velocity
+
+        // Record (optional, mapping to NONE or a specific state)
+        // recorder.record(..., ActionType::NONE); 
+        
+        return BTStatus::SUCCESS;
+    }));
+
+    root->addChild(std::move(danceSeq));
+
+    // --- 3. WANDER ACTION (Default) ---
     root->addChild(std::make_unique<BTAction>([&recorder](EnemyContext& ctx) {
         WorldState state;
         state.canSeeEnemy = false; 
-        state.enemyNear = (std::hypot(ctx.player.position.x - ctx.enemy.getKinematic().position.x, ctx.player.position.y - ctx.enemy.getKinematic().position.y) < 200.f);
+        state.enemyNear = false;
         state.isNearWall = false;
         state.canHide = false;
-        recorder.record(state, ActionType::SEEK_CENTER);
+        recorder.record(state, ActionType::WANDER);
 
+        // Use the same wander logic as player, or graph wander
+        // Let's use Graph Wander (Search) for the enemy
         moveEnemySearch(ctx.enemy, ctx.graph, ctx.dt);
         
         return BTStatus::SUCCESS;
@@ -260,6 +296,7 @@ int main() {
 
     // --- ENEMY PATHFINDING STATE (simple chase) ---
     float enemyRepathTimer = 0.f;
+    float enemyDanceTimer = 0.f; // Timer for the dance behavior
 
     std::cout << "--- STARTING ---" << std::endl;
     std::cout << "Player is AI-controlled." << std::endl;
@@ -452,7 +489,7 @@ int main() {
                  else moveEnemySearch(enemy, graph, dt);
             } else {
                 // Execute Behavior Tree
-                EnemyContext ctx { enemy, chara.getKinematic(), walls, graph, dt };
+                EnemyContext ctx { enemy, chara.getKinematic(), walls, graph, dt, enemyDanceTimer };
                 enemyBT->tick(ctx);
             }
 

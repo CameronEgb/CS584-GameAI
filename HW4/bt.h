@@ -12,6 +12,7 @@ struct EnemyContext {
     const std::vector<sf::FloatRect>& walls;
     const Graph& graph;
     float dt;
+    float& danceTimer;
 };
 
 enum class BTStatus {
