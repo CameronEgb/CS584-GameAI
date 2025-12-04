@@ -12,13 +12,12 @@
 // --- PHYSICS HELPER ---
 void resolveCollisions(Character& chara, const std::vector<sf::FloatRect>& walls) {
     Kinematic k = chara.getKinematic();
-    float r = 10.f; // Agent radius
+    float r = 10.f; 
     sf::FloatRect agentBounds({k.position.x - r, k.position.y - r}, {r * 2.f, r * 2.f});
 
     for (const auto& w : walls) {
         std::optional<sf::FloatRect> intersection = w.findIntersection(agentBounds);
         if (intersection) {
-            // Push out in the direction of least overlap
             if (intersection->size.x < intersection->size.y) {
                 if (k.position.x < w.position.x) k.position.x -= intersection->size.x;
                 else k.position.x += intersection->size.x;
@@ -36,7 +35,6 @@ std::unique_ptr<DTNode> buildHardcodedDT() {
     auto seek = std::make_unique<DTAction>(ActionType::SEEK_GOAL);
     auto recharge = std::make_unique<DTAction>(ActionType::RECHARGE);
     auto flee = std::make_unique<DTAction>(ActionType::FLEE_ENEMY);
-
     auto checkGoal = std::make_unique<DTDecision>("goalVisible", std::move(seek), std::move(wander));
     auto checkEnergy = std::make_unique<DTDecision>("energyLow", std::move(recharge), std::move(checkGoal));
     auto root = std::make_unique<DTDecision>("enemyNear", std::move(flee), std::move(checkEnergy));
@@ -44,39 +42,42 @@ std::unique_ptr<DTNode> buildHardcodedDT() {
 }
 
 int main() {
-    sf::RenderWindow window(sf::VideoMode({1200, 900}), "HW4: 4 Room Environment");
+    // USE CONSTANTS FROM STEERING.H
+    sf::RenderWindow window(sf::VideoMode({(unsigned int)WINDOW_WIDTH, (unsigned int)WINDOW_HEIGHT}), "HW4: 4 Rooms");
     window.setFramerateLimit(60);
 
     // --- ENVIRONMENT ---
     std::vector<sf::FloatRect> walls;
     Graph graph = createFourRoomGraph(walls); 
     
-    // --- SETUP ENTITIES ---
+    // --- SETUP ENTITIES (Relative to Window Size) ---
+    float qW = WINDOW_WIDTH / 4.f;
+    float qH = WINDOW_HEIGHT / 4.f;
+
     Character chara;
-    chara.setPosition(100.f, 100.f); // Top-Left Room
+    chara.setPosition(qW, qH); // Top-Left Room
 
     Kinematic enemy;
-    enemy.position = {1100.f, 800.f}; // Bottom-Right Room
+    enemy.position = {WINDOW_WIDTH - qW, WINDOW_HEIGHT - qH}; // Bottom-Right Room
     sf::RectangleShape enemyShape(sf::Vector2f(30.f, 30.f));
     enemyShape.setFillColor(sf::Color::Red);
     enemyShape.setOrigin({15.f, 15.f});
 
-    sf::Vector2f goalPos(1100.f, 100.f); // Top-Right Room
+    sf::Vector2f goalPos(WINDOW_WIDTH - qW, qH); // Top-Right Room
     sf::CircleShape goalShape(15);
     goalShape.setFillColor(sf::Color::Green);
     goalShape.setPosition(goalPos);
     goalShape.setOrigin({15.f, 15.f});
 
-    sf::Vector2f stationPos(100.f, 800.f); // Bottom-Left Room
+    sf::Vector2f stationPos(qW, WINDOW_HEIGHT - qH); // Bottom-Left Room
     sf::RectangleShape stationShape(sf::Vector2f(40.f, 40.f));
     stationShape.setFillColor(sf::Color::Blue);
     stationShape.setPosition(stationPos);
     stationShape.setOrigin({20.f, 20.f});
 
-    // --- AI STATE ---
     float energy = 100.0f;
-    const float THREAT_DIST = 200.0f;
-    const float GOAL_DIST = 400.0f;
+    const float THREAT_DIST = 150.0f;
+    const float GOAL_DIST = 300.0f;
 
     auto hardcodedDT = buildHardcodedDT();
     std::unique_ptr<DTNode> learnedDT = nullptr;
@@ -88,16 +89,15 @@ int main() {
     float recordingTimer = 0.f;
     float pathUpdateTimer = 0.f;
 
-    std::cout << "--- STARTING SIMULATION ---" << std::endl;
-    std::cout << "Phase 1: Recording. Click to manually pathfind." << std::endl;
+    std::cout << "--- STARTING ---" << std::endl;
 
     auto planPathTo = [&](sf::Vector2f target) {
         Metrics m;
-        // Bounds check (inside walls)
-        if (target.x < 20 || target.x > 1180 || target.y < 20 || target.y > 880) return;
+        // Basic bounds check
+        if (target.x < 20 || target.x > WINDOW_WIDTH-20 || target.y < 20 || target.y > WINDOW_HEIGHT-20) return;
 
-        int startNode = graph.getNodeAt(chara.getKinematic().position.x, chara.getKinematic().position.y, 25.f);
-        int endNode = graph.getNodeAt(target.x, target.y, 25.f);
+        int startNode = graph.getNodeAt(chara.getKinematic().position.x, chara.getKinematic().position.y, 20.f);
+        int endNode = graph.getNodeAt(target.x, target.y, 20.f);
         
         if (startNode != -1 && endNode != -1) {
             std::vector<int> pathIndices = aStar(graph, startNode, endNode, euclideanHeur, m);
@@ -108,7 +108,6 @@ int main() {
                 chara.setPath(points);
             }
         } else {
-            // Fallback seek
             chara.seek(target, 0.016f); 
         }
     };
@@ -149,7 +148,7 @@ int main() {
                 recordingTimer += dt;
                 if (recordingTimer > 10.0f) {
                     mode = LEARNING;
-                    std::cout << "--- LEARNING COMPLETE ---" << std::endl;
+                    std::cout << "--- LEARNING ---" << std::endl;
                 }
             } 
             else if (mode == LEARNING) {
@@ -193,7 +192,7 @@ int main() {
         energy = std::max(0.f, std::min(100.f, energy));
         resolveCollisions(chara, walls);
 
-        // Enemy Logic
+        // Simple Enemy Logic
         if (dEnemy < 300) {
             sf::Vector2f dir = chara.getKinematic().position - enemy.position;
             float len = std::hypot(dir.x, dir.y);
@@ -204,16 +203,15 @@ int main() {
             enemy.position.y += (rand()%3 - 1)*1.5f;
         }
         
-        // Clamp Enemy
+        // Clamp Enemy to window
         if(enemy.position.x < 30) enemy.position.x = 30;
-        if(enemy.position.x > 1170) enemy.position.x = 1170;
+        if(enemy.position.x > WINDOW_WIDTH-30) enemy.position.x = WINDOW_WIDTH-30;
         if(enemy.position.y < 30) enemy.position.y = 30;
-        if(enemy.position.y > 870) enemy.position.y = 870;
+        if(enemy.position.y > WINDOW_HEIGHT-30) enemy.position.y = WINDOW_HEIGHT-30;
         enemyShape.setPosition(enemy.position);
 
         window.clear(sf::Color(20, 20, 25));
         
-        // Draw Walls
         for (const auto& w : walls) {
             sf::RectangleShape r({w.size.x, w.size.y});
             r.setPosition(w.position);
@@ -223,7 +221,6 @@ int main() {
             window.draw(r);
         }
 
-        // Zones
         sf::CircleShape ring(THREAT_DIST);
         ring.setOrigin({THREAT_DIST, THREAT_DIST});
         ring.setPosition(chara.getKinematic().position);
