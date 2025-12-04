@@ -11,6 +11,7 @@ enum class ActionType {
     WANDER,
     FLEE_ENEMY,
     SEEK_CENTER,
+    ATTACK,
     NONE
 };
 
@@ -18,11 +19,13 @@ enum class ActionType {
 struct WorldState {
     bool enemyNear;      // Is enemy within threat range?
     bool isNearWall;
+    bool canSeeEnemy;
     
     // Helper to print state for debugging
     std::string toString() const {
         return "EnemyNear:" + std::string(enemyNear ? "T" : "F") + 
-               " IsNearWall:" + std::string(isNearWall ? "T" : "F");
+               " IsNearWall:" + std::string(isNearWall ? "T" : "F") +
+               " CanSeeEnemy:" + std::string(canSeeEnemy ? "T" : "F");
     }
 };
 

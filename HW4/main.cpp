@@ -2,6 +2,9 @@
 #include "pathfinding.h"
 #include "steering.h"
 #include "ai.h"
+#include "recorder.h"
+#include "dt_learner.h"
+#include "bt.h"
 #include <iostream>
 #include <SFML/Graphics.hpp>
 #include <vector>
@@ -13,6 +16,33 @@
 const sf::Vector2f AGENT_START_POS(200.f, 150.f);
 const sf::Vector2f ENEMY_START_POS(600.f, 450.f);
 const sf::Vector2f CENTER_SCREEN(WINDOW_WIDTH / 2.f, WINDOW_HEIGHT / 2.f);
+
+// --- GEOMETRY HELPERS ---
+bool lineSegmentsIntersect(sf::Vector2f p1, sf::Vector2f p2, sf::Vector2f p3, sf::Vector2f p4) {
+    float det = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
+    if (std::abs(det) < 0.001f) {
+        return false; // Parallel or collinear
+    }
+    float t = ((p3.x - p1.x) * (p4.y - p3.y) - (p3.y - p1.y) * (p4.x - p3.x)) / det;
+    float u = -((p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)) / det;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
+bool hasLineOfSight(sf::Vector2f start, sf::Vector2f end, const std::vector<sf::FloatRect>& walls) {
+    for (const auto& wall : walls) {
+        sf::Vector2f p1 = wall.position;
+        sf::Vector2f p2 = {wall.position.x + wall.size.x, wall.position.y};
+        sf::Vector2f p3 = {wall.position.x + wall.size.x, wall.position.y + wall.size.y};
+        sf::Vector2f p4 = {wall.position.x, wall.position.y + wall.size.y};
+        if (lineSegmentsIntersect(start, end, p1, p2) ||
+            lineSegmentsIntersect(start, end, p2, p3) ||
+            lineSegmentsIntersect(start, end, p3, p4) ||
+            lineSegmentsIntersect(start, end, p4, p1)) {
+            return false;
+        }
+    }
+    return true;
+}
 
 // --- PHYSICS HELPER ---
 void resolveKinematicCollisions(Kinematic& k, const std::vector<sf::FloatRect>& walls) {
@@ -38,18 +68,72 @@ std::unique_ptr<DTNode> buildPlayerDT() {
     auto wander = std::make_unique<DTAction>(ActionType::WANDER);
     auto flee = std::make_unique<DTAction>(ActionType::FLEE_ENEMY);
     auto seek_center = std::make_unique<DTAction>(ActionType::SEEK_CENTER);
+    auto attack = std::make_unique<DTAction>(ActionType::ATTACK);
 
     // If near a wall, seek center. Otherwise, wander.
     auto checkNearWall = std::make_unique<DTDecision>("isNearWall", std::move(seek_center), std::move(wander));
-    // If enemy is near, flee. Otherwise, check for walls.
-    auto root = std::make_unique<DTDecision>("enemyNear", std::move(flee), std::move(checkNearWall));
+    
+    // If can see enemy, attack. Otherwise, check for walls.
+    auto checkVisibility = std::make_unique<DTDecision>("canSeeEnemy", std::move(attack), std::move(checkNearWall));
 
+    // If enemy is near, flee. Otherwise, check visibility.
+    auto root = std::make_unique<DTDecision>("enemyNear", std::move(flee), std::move(checkVisibility));
+
+    return root;
+}
+
+// Behavior Tree for the ENEMY
+std::unique_ptr<BTNode> buildEnemyBT() {
+    auto root = std::make_unique<BTSelector>();
+    
+    // Sequence: See Player -> Chase
+    auto chaseSeq = std::make_unique<BTSequence>();
+    
+    // Condition: Can See Player
+    chaseSeq->addChild(std::make_unique<BTCondition>([](EnemyContext& ctx) {
+        return hasLineOfSight(ctx.enemy.position, ctx.player.position, ctx.walls);
+    }));
+    
+    // Action: Chase
+    chaseSeq->addChild(std::make_unique<BTAction>([](EnemyContext& ctx) {
+        sf::Vector2f steering = ctx.player.position - ctx.enemy.position;
+        float dist = std::hypot(steering.x, steering.y);
+        if (dist > 0.1f) steering /= dist;
+        
+        float enemySpeed = 110.f;
+        sf::Vector2f accel = (steering * enemySpeed - ctx.enemy.velocity) * 4.0f;
+        ctx.enemy.velocity += accel * ctx.dt;
+        
+        float s = std::hypot(ctx.enemy.velocity.x, ctx.enemy.velocity.y);
+        if (s > enemySpeed) ctx.enemy.velocity = (ctx.enemy.velocity / s) * enemySpeed;
+        
+        return BTStatus::SUCCESS;
+    }));
+    
+    root->addChild(std::move(chaseSeq));
+    
+    // Action: Search (Seek Center)
+    root->addChild(std::make_unique<BTAction>([](EnemyContext& ctx) {
+        sf::Vector2f center(400.f, 300.f);
+        sf::Vector2f steering = center - ctx.enemy.position;
+        float dist = std::hypot(steering.x, steering.y);
+        if (dist > 0.1f) steering /= dist;
+        
+        float enemySpeed = 60.f; 
+        sf::Vector2f accel = (steering * enemySpeed - ctx.enemy.velocity) * 2.0f;
+        ctx.enemy.velocity += accel * ctx.dt;
+        
+        return BTStatus::SUCCESS;
+    }));
+    
     return root;
 }
 
 int main() {
     sf::RenderWindow window(sf::VideoMode({(unsigned int)WINDOW_WIDTH, (unsigned int)WINDOW_HEIGHT}), "HW4: Player Decision Tree");
     window.setFramerateLimit(60);
+
+    DataRecorder recorder("training_data.csv");
 
     // --- ENVIRONMENT ---
     std::vector<sf::FloatRect> walls;
@@ -76,6 +160,7 @@ int main() {
     const float FLEE_SPEED = 250.f;
 
     auto playerDT = buildPlayerDT();
+    auto enemyBT = buildEnemyBT();
 
     sf::Clock clock;
     enum Mode { WARMUP, ACTING, MANUAL };
@@ -134,6 +219,13 @@ int main() {
                     std::cout << "--- MANUAL CONTROL ---" << std::endl;
                 }
             }
+            
+            if (const auto* keyPress = event->getIf<sf::Event::KeyPressed>()) {
+                if (keyPress->code == sf::Keyboard::Key::L) {
+                    std::cout << "Learning DT from data..." << std::endl;
+                    playerDT = learnDT("training_data.csv");
+                }
+            }
         }
 
         // --- 1. GAME LOGIC & PLAYER AI ---
@@ -158,6 +250,7 @@ int main() {
             if (mode == ACTING) {
                 WorldState state;
                 state.enemyNear = (dEnemy < THREAT_DIST);
+                state.canSeeEnemy = hasLineOfSight(chara.getKinematic().position, enemy.position, walls);
                 
                 const auto& pos = chara.getKinematic().position;
                 state.isNearWall = pos.x < WALL_PROXIMITY || pos.x > WINDOW_WIDTH - WALL_PROXIMITY ||
@@ -165,6 +258,7 @@ int main() {
 
                 // Make decisions for the player character
                 ActionType action = playerDT->makeDecision(state);
+                recorder.record(state, action);
                 
                 // Adjust speed based on threat
                 if (state.enemyNear) {
@@ -186,6 +280,10 @@ int main() {
                             pathUpdateTimer = 1.5f; 
                         }
                         break;
+                    case ActionType::ATTACK:
+                        chara.setPath({});
+                        chara.attack(enemy.position, dt);
+                        break;
                     case ActionType::WANDER:
                         chara.setPath({}); // Clear any path and just wander
                         chara.wander(dt);
@@ -205,25 +303,11 @@ int main() {
         resolveKinematicCollisions(kChar, walls);
         chara.setPosition(kChar.position.x, kChar.position.y);
 
-        // --- 3. ENEMY INTELLIGENCE (Simple Chase) ---
+        // --- 3. ENEMY INTELLIGENCE (Behavior Tree) ---
         if (mode != WARMUP) {
-            enemyRepathTimer -= dt;
-            // Simple deterministic chase
-            if (enemyRepathTimer <= 0.f) {
-                // Enemy just seeks the player's current position
-                sf::Vector2f steering = chara.getKinematic().position - enemy.position;
-                float dist = std::hypot(steering.x, steering.y);
-                if (dist > 0.1f) steering /= dist;
-
-                float enemySpeed = 110.f;
-                sf::Vector2f accel = (steering * enemySpeed - enemy.velocity) * 4.0f;
-                enemy.velocity += accel * dt;
-
-                float s = std::hypot(enemy.velocity.x, enemy.velocity.y);
-                if (s > enemySpeed) enemy.velocity = (enemy.velocity / s) * enemySpeed;
-
-                enemyRepathTimer = 0.2f; // Re-evaluate direction frequently
-            }
+            // Execute Behavior Tree
+            EnemyContext ctx { enemy, chara.getKinematic(), walls, dt };
+            enemyBT->tick(ctx);
 
             enemy.position += enemy.velocity * dt;
             resolveKinematicCollisions(enemy, walls);

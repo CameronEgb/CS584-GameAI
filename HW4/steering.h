@@ -54,6 +54,8 @@ private:
     float wanderOrientation; // Added for better wander
     float wanderOffset;      // Added for better wander
     float wanderRadius;      // Added for better wander
+    bool isAttacking;
+    float attackTimer;
 
 public:
     Character();
@@ -72,6 +74,7 @@ public:
     void wander(float dt);
     void seek(sf::Vector2f targetPos, float dt);
     void flee(sf::Vector2f targetPos, float dt);
+    void attack(sf::Vector2f targetPos, float dt);
     void stop();
 };
 

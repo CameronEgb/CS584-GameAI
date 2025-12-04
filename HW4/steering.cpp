@@ -65,7 +65,7 @@ void Breadcrumb::clear() {
 // TUNING: Reduced maxCrumbs (100) for faster fade. Increased maxSpeed (300).
 Character::Character() 
     : breadcrumbs(100, 4, sf::Color::Magenta), currentWaypoint(0), maxSpeed(150.f), // Adjusted default speed
-      wanderOrientation(0.f), wanderOffset(100.f), wanderRadius(50.f)
+      wanderOrientation(0.f), wanderOffset(100.f), wanderRadius(50.f), isAttacking(false), attackTimer(0.f)
 {
     shape.setPointCount(3);
     shape.setPoint(0, sf::Vector2f(20, 0));
@@ -93,6 +93,8 @@ void Character::teleport(float x, float y) {
     shape.setPosition(kinematic.position);
     breadcrumbs.clear();
     path.clear();
+    isAttacking = false;
+    attackTimer = 0.f;
 }
 
 void Character::setPath(const std::vector<sf::Vector2f>& p) {
@@ -105,6 +107,7 @@ void Character::setMaxSpeed(float speed) {
 }
 
 void Character::seek(sf::Vector2f targetPos, float dt) {
+    if (isAttacking) return;
     sf::Vector2f dir = targetPos - kinematic.position;
     float dist = std::hypot(dir.x, dir.y);
     
@@ -150,6 +153,7 @@ void Character::seek(sf::Vector2f targetPos, float dt) {
 }
 
 void Character::flee(sf::Vector2f targetPos, float dt) {
+    if (isAttacking) return;
     sf::Vector2f dir = kinematic.position - targetPos; 
     float dist = std::hypot(dir.x, dir.y);
     if (dist > 0.1f) dir /= dist;
@@ -172,6 +176,7 @@ void Character::flee(sf::Vector2f targetPos, float dt) {
 }
 
 void Character::wander(float dt) {
+    if (isAttacking) return;
     // 1. Update the wander orientation
     wanderOrientation += randomBinomial() * 2.0f * dt; // wanderRate
 
@@ -189,6 +194,20 @@ void Character::wander(float dt) {
     seek(targetPos, dt);
 }
 
+void Character::attack(sf::Vector2f targetPos, float dt) {
+    (void)dt;
+    if (isAttacking) return;
+
+    stop();
+    isAttacking = true;
+    attackTimer = 0.5f;
+
+    sf::Vector2f dir = targetPos - kinematic.position;
+    if (std::hypot(dir.x, dir.y) > 0.1f) {
+        kinematic.orientation = std::atan2(dir.y, dir.x);
+    }
+}
+
 void Character::stop() {
     kinematic.velocity = {0.f, 0.f};
     kinematic.rotation = 0.f;
@@ -196,7 +215,7 @@ void Character::stop() {
 
 void Character::update(float dt, const Kinematic& /*target*/) {
     // 0. Path Following
-    if (!path.empty() && currentWaypoint < (int)path.size()) {
+    if (!isAttacking && !path.empty() && currentWaypoint < (int)path.size()) {
         sf::Vector2f target = path[currentWaypoint];
         sf::Vector2f dir = target - kinematic.position;
         float dist = std::hypot(dir.x, dir.y);
@@ -214,10 +233,23 @@ void Character::update(float dt, const Kinematic& /*target*/) {
         path.clear();
     }
 
-    // 1. Update Physics
-    kinematic.position += kinematic.velocity * dt;
-    kinematic.orientation += kinematic.rotation * dt;
-    kinematic.orientation = mapToRange(kinematic.orientation);
+    // Handle attack state transition
+    if (isAttacking) {
+        attackTimer -= dt;
+        shape.setFillColor(sf::Color::Yellow);
+        if (attackTimer <= 0.f) {
+            isAttacking = false;
+            shape.setFillColor(sf::Color::Cyan);
+        }
+    }
+
+    // 1. Update Physics (only if not attacking)
+    if (!isAttacking) {
+        kinematic.position += kinematic.velocity * dt;
+        kinematic.orientation += kinematic.rotation * dt;
+        kinematic.orientation = mapToRange(kinematic.orientation);
+    }
+
 
     // 2. Update Visuals
     breadcrumbs.update(kinematic.position);

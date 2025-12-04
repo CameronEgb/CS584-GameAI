@@ -4,7 +4,7 @@ CXXFLAGS := -std=c++17 -Wall -Wextra -O2
 # Adjust paths for your SFML 3.0 installation
 SFML_LIBS := -lsfml-graphics -lsfml-window -lsfml-system
 
-SRCS := main.cpp graph.cpp pathfinding.cpp steering.cpp ai.cpp
+SRCS := main.cpp graph.cpp pathfinding.cpp steering.cpp ai.cpp recorder.cpp dt_learner.cpp bt.cpp
 OBJS := $(SRCS:.cpp=.o)
 TARGET := hw4_sim
 
