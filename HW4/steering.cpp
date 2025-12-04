@@ -106,6 +106,10 @@ void Character::setMaxSpeed(float speed) {
     maxSpeed = speed;
 }
 
+void Character::setColor(sf::Color c) {
+    shape.setFillColor(c);
+}
+
 void Character::seek(sf::Vector2f targetPos, float dt) {
     if (isAttacking) return;
     sf::Vector2f dir = targetPos - kinematic.position;

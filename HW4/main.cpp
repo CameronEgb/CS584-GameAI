@@ -98,20 +98,12 @@ std::unique_ptr<DTNode> buildPlayerDT() {
     auto wander = std::make_unique<DTAction>(ActionType::WANDER);
     auto flee = std::make_unique<DTAction>(ActionType::FLEE_ENEMY);
     auto seek_center = std::make_unique<DTAction>(ActionType::SEEK_CENTER);
-    auto attack = std::make_unique<DTAction>(ActionType::ATTACK);
-    auto hide = std::make_unique<DTAction>(ActionType::HIDE);
 
-    // If can hide, hide. Else flee.
-    auto checkCanHide = std::make_unique<DTDecision>("canHide", std::move(hide), std::move(flee));
-
-    // If can see enemy (and enemy is near), try to hide. Else (hidden but near), attack.
-    auto checkVisibility = std::make_unique<DTDecision>("canSeeEnemy", std::move(checkCanHide), std::move(attack));
-
-    // If near wall, seek center. Else wander.
+    // If near a wall, seek center. Otherwise, wander.
     auto checkNearWall = std::make_unique<DTDecision>("isNearWall", std::move(seek_center), std::move(wander));
 
     // Root: Enemy Near?
-    auto root = std::make_unique<DTDecision>("enemyNear", std::move(checkVisibility), std::move(checkNearWall));
+    auto root = std::make_unique<DTDecision>("enemyNear", std::move(flee), std::move(checkNearWall));
 
     return root;
 }
@@ -125,28 +117,19 @@ std::unique_ptr<BTNode> buildEnemyBT(DataRecorder& recorder) {
     
     // Condition: Can See Player
     chaseSeq->addChild(std::make_unique<BTCondition>([](EnemyContext& ctx) {
-        return hasLineOfSight(ctx.enemy.position, ctx.player.position, ctx.walls);
+        return hasLineOfSight(ctx.enemy.getKinematic().position, ctx.player.position, ctx.walls);
     }));
     
     // Action: Chase
     chaseSeq->addChild(std::make_unique<BTAction>([&recorder](EnemyContext& ctx) {
         WorldState state;
         state.canSeeEnemy = true; 
-        state.enemyNear = (std::hypot(ctx.player.position.x - ctx.enemy.position.x, ctx.player.position.y - ctx.enemy.position.y) < 200.f);
+        state.enemyNear = (std::hypot(ctx.player.position.x - ctx.enemy.getKinematic().position.x, ctx.player.position.y - ctx.enemy.getKinematic().position.y) < 200.f);
         state.isNearWall = false; 
-        state.canHide = false; // Enemy doesn't hide
+        state.canHide = false;
         recorder.record(state, ActionType::CHASE);
 
-        sf::Vector2f steering = ctx.player.position - ctx.enemy.position;
-        float dist = std::hypot(steering.x, steering.y);
-        if (dist > 0.1f) steering /= dist;
-        
-        float enemySpeed = 110.f;
-        sf::Vector2f accel = (steering * enemySpeed - ctx.enemy.velocity) * 4.0f;
-        ctx.enemy.velocity += accel * ctx.dt;
-        
-        float s = std::hypot(ctx.enemy.velocity.x, ctx.enemy.velocity.y);
-        if (s > enemySpeed) ctx.enemy.velocity = (ctx.enemy.velocity / s) * enemySpeed;
+        moveEnemyChase(ctx.enemy, ctx.player.position, ctx.graph, ctx.walls, ctx.dt);
         
         return BTStatus::SUCCESS;
     }));
@@ -157,19 +140,12 @@ std::unique_ptr<BTNode> buildEnemyBT(DataRecorder& recorder) {
     root->addChild(std::make_unique<BTAction>([&recorder](EnemyContext& ctx) {
         WorldState state;
         state.canSeeEnemy = false; 
-        state.enemyNear = (std::hypot(ctx.player.position.x - ctx.enemy.position.x, ctx.player.position.y - ctx.enemy.position.y) < 200.f);
+        state.enemyNear = (std::hypot(ctx.player.position.x - ctx.enemy.getKinematic().position.x, ctx.player.position.y - ctx.enemy.getKinematic().position.y) < 200.f);
         state.isNearWall = false;
         state.canHide = false;
         recorder.record(state, ActionType::SEEK_CENTER);
 
-        sf::Vector2f center(400.f, 300.f);
-        sf::Vector2f steering = center - ctx.enemy.position;
-        float dist = std::hypot(steering.x, steering.y);
-        if (dist > 0.1f) steering /= dist;
-        
-        float enemySpeed = 60.f; 
-        sf::Vector2f accel = (steering * enemySpeed - ctx.enemy.velocity) * 2.0f;
-        ctx.enemy.velocity += accel * ctx.dt;
+        moveEnemySearch(ctx.enemy, ctx.graph, ctx.dt);
         
         return BTStatus::SUCCESS;
     }));
@@ -177,28 +153,46 @@ std::unique_ptr<BTNode> buildEnemyBT(DataRecorder& recorder) {
     return root;
 }
 
-void moveEnemyChase(Kinematic& enemy, const sf::Vector2f& targetPos, float dt) {
-    sf::Vector2f steering = targetPos - enemy.position;
-    float dist = std::hypot(steering.x, steering.y);
-    if (dist > 0.1f) steering /= dist;
+void planPath(Character& chara, const Graph& graph, sf::Vector2f target) {
+    Metrics m;
+    sf::Vector2f pos = chara.getKinematic().position;
+    int startNode = graph.getNodeAt(pos.x, pos.y, 20.f);
+    int endNode = graph.getNodeAt(target.x, target.y, 20.f);
     
-    float enemySpeed = 110.f;
-    sf::Vector2f accel = (steering * enemySpeed - enemy.velocity) * 4.0f;
-    enemy.velocity += accel * dt;
-    
-    float s = std::hypot(enemy.velocity.x, enemy.velocity.y);
-    if (s > enemySpeed) enemy.velocity = (enemy.velocity / s) * enemySpeed;
+    if (startNode != -1 && endNode != -1) {
+        std::vector<int> pathIndices = aStar(graph, startNode, endNode, euclideanHeur, m);
+        if (!pathIndices.empty()) {
+            std::vector<sf::Vector2f> points;
+            for (int idx : pathIndices) points.push_back(graph.positions[idx]);
+            points.push_back(target);
+            chara.setPath(points);
+        } else {
+            chara.setPath({target});
+        }
+    } else {
+        chara.setPath({target});
+    }
 }
 
-void moveEnemySearch(Kinematic& enemy, float dt) {
-    sf::Vector2f center(400.f, 300.f);
-    sf::Vector2f steering = center - enemy.position;
-    float dist = std::hypot(steering.x, steering.y);
-    if (dist > 0.1f) steering /= dist;
-    
-    float enemySpeed = 60.f; 
-    sf::Vector2f accel = (steering * enemySpeed - enemy.velocity) * 2.0f;
-    enemy.velocity += accel * dt;
+void moveEnemyChase(Character& enemy, const sf::Vector2f& targetPos, const Graph& graph, const std::vector<sf::FloatRect>& walls, float dt) {
+    if (hasLineOfSight(enemy.getKinematic().position, targetPos, walls)) {
+        enemy.setPath({});
+        enemy.seek(targetPos, dt);
+    } else {
+        if (enemy.isPathComplete()) {
+             planPath(enemy, graph, targetPos);
+        }
+    }
+}
+
+void moveEnemySearch(Character& enemy, const Graph& graph, float dt) {
+    (void)dt;
+    if (enemy.isPathComplete()) {
+        if (graph.numVertices > 0) {
+             int r = std::rand() % graph.numVertices;
+             planPath(enemy, graph, graph.positions[r]);
+        }
+    }
 }
 
 int main() {
@@ -215,18 +209,14 @@ int main() {
     Character chara; // This is the player
     chara.teleport(AGENT_START_POS.x, AGENT_START_POS.y); 
 
-    Kinematic enemy; // This is the monster
-    enemy.position = ENEMY_START_POS;
-    enemy.velocity = {0.f, 0.f};
+    Character enemy; // This is the monster
+    enemy.teleport(ENEMY_START_POS.x, ENEMY_START_POS.y);
+    enemy.setColor(sf::Color::Red);
     
     Breadcrumb enemyTrail(150, 5, sf::Color::Red);
 
-    sf::RectangleShape enemyShape(sf::Vector2f(30.f, 30.f));
-    enemyShape.setFillColor(sf::Color::Red);
-    enemyShape.setOrigin({15.f, 15.f});
-
     // --- AI STATE ---
-    const float THREAT_DIST = 150.0f;
+    const float THREAT_DIST = 200.0f;
     const float WALL_PROXIMITY = 60.0f; // Increased for better wall avoidance
     const float NORMAL_SPEED = 150.f;
     const float FLEE_SPEED = 250.f;
@@ -269,8 +259,7 @@ int main() {
     auto resetGame = [&]() {
         std::cout << ">>> CAUGHT! Resetting positions... <<<" << std::endl;
         chara.teleport(AGENT_START_POS.x, AGENT_START_POS.y);
-        enemy.position = ENEMY_START_POS;
-        enemy.velocity = {0.f, 0.f};
+        enemy.teleport(ENEMY_START_POS.x, ENEMY_START_POS.y);
         mode = WARMUP;
         stateTimer = 0.f;
         std::cout << "Player is AI-controlled." << std::endl;
@@ -301,8 +290,8 @@ int main() {
             }
         }
         else {
-            float dEnemy = std::hypot(chara.getKinematic().position.x - enemy.position.x, 
-                                      chara.getKinematic().position.y - enemy.position.y);
+            float dEnemy = std::hypot(chara.getKinematic().position.x - enemy.getKinematic().position.x, 
+                                      chara.getKinematic().position.y - enemy.getKinematic().position.y);
 
             // *** GAME OVER CHECK ***
             if (dEnemy < 30.f) {
@@ -313,9 +302,9 @@ int main() {
             if (mode == ACTING) {
                 WorldState state;
                 state.enemyNear = (dEnemy < THREAT_DIST);
-                state.canSeeEnemy = hasLineOfSight(chara.getKinematic().position, enemy.position, walls);
+                state.canSeeEnemy = hasLineOfSight(chara.getKinematic().position, enemy.getKinematic().position, walls);
                 
-                sf::Vector2f hidingSpot = findHidingSpot(chara.getKinematic().position, enemy.position, walls);
+                sf::Vector2f hidingSpot = findHidingSpot(chara.getKinematic().position, enemy.getKinematic().position, walls);
                 state.canHide = (hidingSpot.x != -1.f);
                 
                 const auto& pos = chara.getKinematic().position;
@@ -336,7 +325,7 @@ int main() {
                 switch(action) {
                     case ActionType::FLEE_ENEMY:
                         chara.setPath({}); // Clear any path and flee directly
-                        chara.flee(enemy.position, dt);
+                        chara.flee(enemy.getKinematic().position, dt);
                         break;
                     case ActionType::SEEK_CENTER:
                         // Only plan a new path every so often to avoid constant recalculation
@@ -347,13 +336,13 @@ int main() {
                         break;
                     case ActionType::ATTACK:
                         chara.setPath({});
-                        chara.attack(enemy.position, dt);
+                        chara.attack(enemy.getKinematic().position, dt);
                         break;
                     case ActionType::HIDE:
                         if (state.canHide) {
                              planPathTo(hidingSpot);
                         } else {
-                             chara.flee(enemy.position, dt);
+                             chara.flee(enemy.getKinematic().position, dt);
                         }
                         break;
                     case ActionType::WANDER:
@@ -384,22 +373,26 @@ int main() {
         if (mode != WARMUP) {
             if (enemyDT) {
                  WorldState state;
-                 state.canSeeEnemy = hasLineOfSight(enemy.position, chara.getKinematic().position, walls);
+                 state.canSeeEnemy = hasLineOfSight(enemy.getKinematic().position, chara.getKinematic().position, walls);
                  state.enemyNear = false; state.isNearWall = false; state.canHide = false;
 
                  ActionType act = enemyDT->makeDecision(state);
-                 if (act == ActionType::CHASE) moveEnemyChase(enemy, chara.getKinematic().position, dt);
-                 else moveEnemySearch(enemy, dt);
+                 if (act == ActionType::CHASE) moveEnemyChase(enemy, chara.getKinematic().position, graph, walls, dt);
+                 else moveEnemySearch(enemy, graph, dt);
             } else {
                 // Execute Behavior Tree
-                EnemyContext ctx { enemy, chara.getKinematic(), walls, dt };
+                EnemyContext ctx { enemy, chara.getKinematic(), walls, graph, dt };
                 enemyBT->tick(ctx);
             }
 
-            enemy.position += enemy.velocity * dt;
-            resolveKinematicCollisions(enemy, walls);
-            enemyShape.setPosition(enemy.position);
-            enemyTrail.update(enemy.position);
+            Kinematic dummy;
+            enemy.update(dt, dummy);
+            
+            Kinematic& kEnemy = enemy.getKinematicRef();
+            resolveKinematicCollisions(kEnemy, walls);
+            enemy.setPosition(kEnemy.position.x, kEnemy.position.y);
+
+            enemyTrail.update(kEnemy.position);
         }
 
         // --- DRAW ---
@@ -419,13 +412,13 @@ int main() {
         // Draw threat ring around enemy, not player
         sf::CircleShape ring(THREAT_DIST);
         ring.setOrigin({THREAT_DIST, THREAT_DIST});
-        ring.setPosition(enemy.position);
+        ring.setPosition(enemy.getKinematic().position);
         ring.setFillColor(sf::Color::Transparent);
         ring.setOutlineColor(sf::Color(255, 50, 50, 80));
         ring.setOutlineThickness(1);
         window.draw(ring);
 
-        window.draw(enemyShape);
+        enemy.draw(window);
         chara.draw(window);
 
         window.display();

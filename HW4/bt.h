@@ -6,9 +6,10 @@
 #include <SFML/Graphics.hpp>
 
 struct EnemyContext {
-    Kinematic& enemy;
+    Character& enemy;
     const Kinematic& player;
     const std::vector<sf::FloatRect>& walls;
+    const Graph& graph;
     float dt;
 };
 
