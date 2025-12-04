@@ -79,6 +79,24 @@ sf::Vector2f findHidingSpot(const sf::Vector2f& seekerPos, const sf::Vector2f& t
     return found ? bestSpot : sf::Vector2f(-1.f, -1.f);
 }
 
+bool isNearAnyWall(sf::Vector2f pos, const std::vector<sf::FloatRect>& walls, float threshold) {
+    // Check screen borders
+    if (pos.x < threshold || pos.x > WINDOW_WIDTH - threshold ||
+        pos.y < threshold || pos.y > WINDOW_HEIGHT - threshold) return true;
+
+    // Check internal walls
+    for (const auto& w : walls) {
+        float closestX = std::fmax(w.position.x, std::fmin(pos.x, w.position.x + w.size.x));
+        float closestY = std::fmax(w.position.y, std::fmin(pos.y, w.position.y + w.size.y));
+        
+        float dx = pos.x - closestX;
+        float dy = pos.y - closestY;
+        
+        if ((dx * dx + dy * dy) < (threshold * threshold)) return true;
+    }
+    return false;
+}
+
 // --- PHYSICS HELPER ---
 void resolveKinematicCollisions(Kinematic& k, const std::vector<sf::FloatRect>& walls) {
     float r = 10.f; 
@@ -242,6 +260,24 @@ int main() {
     std::cout << "--- STARTING ---" << std::endl;
     std::cout << "Player is AI-controlled." << std::endl;
 
+    auto planPathTo = [&](sf::Vector2f target) {
+        Metrics m;
+        int startNode = graph.getNodeAt(chara.getKinematic().position.x, chara.getKinematic().position.y, 20.f);
+        int endNode = graph.getNodeAt(target.x, target.y, 20.f);
+        
+        if (startNode != -1 && endNode != -1) {
+            std::vector<int> pathIndices = aStar(graph, startNode, endNode, euclideanHeur, m);
+            if (!pathIndices.empty()) {
+                std::vector<sf::Vector2f> points;
+                for (int idx : pathIndices) points.push_back(graph.positions[idx]);
+                points.push_back(target);
+                chara.setPath(points);
+            }
+        } else {
+            chara.seek(target, 0.016f); 
+        }
+    };
+
     // Helper to Reset Game State
     auto resetGame = [&]() {
         std::cout << ">>> CAUGHT! Resetting positions... <<<" << std::endl;
@@ -294,9 +330,7 @@ int main() {
                 sf::Vector2f hidingSpot = findHidingSpot(chara.getKinematic().position, enemy.getKinematic().position, walls);
                 state.canHide = (hidingSpot.x != -1.f);
                 
-                const auto& pos = chara.getKinematic().position;
-                state.isNearWall = pos.x < WALL_PROXIMITY || pos.x > WINDOW_WIDTH - WALL_PROXIMITY ||
-                                   pos.y < WALL_PROXIMITY || pos.y > WINDOW_HEIGHT - WALL_PROXIMITY;
+                state.isNearWall = isNearAnyWall(chara.getKinematic().position, walls, WALL_PROXIMITY);
 
                 // Make decisions for the player character
                 ActionType action = playerDT->makeDecision(state);
@@ -317,7 +351,7 @@ int main() {
                     case ActionType::SEEK_CENTER:
                         // Only plan a new path every so often to avoid constant recalculation
                         if (pathUpdateTimer <= 0.f) { 
-                            planPath(chara, graph, CENTER_SCREEN); 
+                            planPathTo(CENTER_SCREEN); 
                             pathUpdateTimer = 1.5f; 
                         }
                         break;
@@ -327,19 +361,14 @@ int main() {
                         break;
                     case ActionType::HIDE:
                         if (state.canHide) {
-                             planPath(chara, graph, hidingSpot);
+                             planPathTo(hidingSpot);
                         } else {
                              chara.flee(enemy.getKinematic().position, dt);
                         }
                         break;
                     case ActionType::WANDER:
-                        // Smart Wander: Pick a random node and pathfind
-                        if (chara.isPathComplete()) {
-                            if (graph.numVertices > 0) {
-                                int r = std::rand() % graph.numVertices;
-                                planPath(chara, graph, graph.positions[r]);
-                            }
-                        }
+                        chara.setPath({});
+                        chara.wander(dt);
                         break;
                     default: 
                         chara.stop();
