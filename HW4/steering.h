@@ -18,6 +18,10 @@ struct Kinematic {
     float rotation;
     
     Kinematic() : position(0,0), orientation(0), velocity(0,0), rotation(0) {}
+
+    float getSpeed() const {
+        return std::hypot(velocity.x, velocity.y);
+    }
 };
 
 struct SteeringOutput {
