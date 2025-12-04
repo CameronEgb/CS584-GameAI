@@ -379,12 +379,29 @@ int main() {
                             }
 
                             if (foundWall) {
+                                // normalize repulsion
+                                float len = std::hypot(repulsionVector.x, repulsionVector.y);
+                                if (len > 0.001f) {
+                                    repulsionVector /= len;
+                                } else {
+                                    // Forces cancelled out (e.g. doorway or narrow hall)
+                                    // Break deadlock by moving forward or random
+                                    if (chara.getKinematic().getSpeed() > 10.f) {
+                                        repulsionVector = chara.getKinematic().velocity / chara.getKinematic().getSpeed();
+                                    } else {
+                                        // Totally stuck, pick random
+                                        float angle = (float)(rand() % 360) * 3.14159f / 180.f;
+                                        repulsionVector = sf::Vector2f(std::cos(angle), std::sin(angle));
+                                    }
+                                }
+
                                 // Steer in the direction of the repulsion vector
-                                sf::Vector2f target = charPos + repulsionVector * 100.f;
+                                // Increased distance to 150.f to prevent 'braking' effect
+                                sf::Vector2f target = charPos + repulsionVector * 150.f;
                                 chara.setPath({});
                                 chara.seek(target, dt);
                             } else {
-                                // Fallback if for some reason we are in this state but no wall is found
+                                // Fallback
                                 chara.wander(dt);
                             }
                         }

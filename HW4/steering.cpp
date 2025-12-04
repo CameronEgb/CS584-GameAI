@@ -65,7 +65,7 @@ void Breadcrumb::clear() {
 // TUNING: Reduced maxCrumbs (100) for faster fade. Increased maxSpeed (300).
 Character::Character() 
     : breadcrumbs(100, 4, sf::Color::Magenta), currentWaypoint(0), maxSpeed(150.f), // Adjusted default speed
-      wanderOrientation(0.f), wanderOffset(200.f), wanderRadius(30.f), isAttacking(false), attackTimer(0.f)
+      wanderOrientation(0.f), wanderOffset(200.f), wanderRadius(40.f), isAttacking(false), attackTimer(0.f)
 {
     shape.setPointCount(3);
     shape.setPoint(0, sf::Vector2f(20, 0));
