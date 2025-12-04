@@ -42,38 +42,40 @@ std::unique_ptr<DTNode> buildHardcodedDT() {
 }
 
 int main() {
-    sf::RenderWindow window(sf::VideoMode({1200, 900}), "HW4: Full Screen Arena");
+    sf::RenderWindow window(sf::VideoMode({1200, 900}), "HW4: Scaled Arena (50%)");
     window.setFramerateLimit(60);
 
     // --- ENVIRONMENT ---
     std::vector<sf::FloatRect> walls;
     Graph graph = createFourRoomGraph(walls); 
     
-    // --- SETUP ENTITIES (Scaled to 1160x860 Arena) ---
+    // --- SETUP ENTITIES (Inside 580x430 Arena) ---
+    // Arena Bounds: X[310, 890], Y[235, 665]
+    
     Character chara;
-    chara.setPosition(100.f, 100.f); // Top-Left Room
+    chara.setPosition(350.f, 270.f); // Top-Left Room
 
     Kinematic enemy;
-    enemy.position = {1100.f, 800.f}; // Bottom-Right Room
+    enemy.position = {850.f, 600.f}; // Bottom-Right Room
     sf::RectangleShape enemyShape(sf::Vector2f(30.f, 30.f));
     enemyShape.setFillColor(sf::Color::Red);
     enemyShape.setOrigin({15.f, 15.f});
 
-    sf::Vector2f goalPos(1100.f, 100.f); // Top-Right Room
+    sf::Vector2f goalPos(850.f, 270.f); // Top-Right Room
     sf::CircleShape goalShape(15);
     goalShape.setFillColor(sf::Color::Green);
     goalShape.setPosition(goalPos);
     goalShape.setOrigin({15.f, 15.f});
 
-    sf::Vector2f stationPos(100.f, 800.f); // Bottom-Left Room
+    sf::Vector2f stationPos(350.f, 600.f); // Bottom-Left Room
     sf::RectangleShape stationShape(sf::Vector2f(40.f, 40.f));
     stationShape.setFillColor(sf::Color::Blue);
     stationShape.setPosition(stationPos);
     stationShape.setOrigin({20.f, 20.f});
 
     float energy = 100.0f;
-    const float THREAT_DIST = 200.0f;
-    const float GOAL_DIST = 400.0f;
+    const float THREAT_DIST = 150.0f;
+    const float GOAL_DIST = 300.0f;
 
     auto hardcodedDT = buildHardcodedDT();
     std::unique_ptr<DTNode> learnedDT = nullptr;
@@ -89,11 +91,11 @@ int main() {
 
     auto planPathTo = [&](sf::Vector2f target) {
         Metrics m;
-        // Bounds check (20px margin)
-        if (target.x < 20 || target.x > 1180 || target.y < 20 || target.y > 880) return;
+        // Check bounds (with 10px buffer inside walls)
+        if (target.x < 320 || target.x > 880 || target.y < 245 || target.y > 655) return;
 
-        int startNode = graph.getNodeAt(chara.getKinematic().position.x, chara.getKinematic().position.y, 30.f);
-        int endNode = graph.getNodeAt(target.x, target.y, 30.f);
+        int startNode = graph.getNodeAt(chara.getKinematic().position.x, chara.getKinematic().position.y, 20.f);
+        int endNode = graph.getNodeAt(target.x, target.y, 20.f);
         
         if (startNode != -1 && endNode != -1) {
             std::vector<int> pathIndices = aStar(graph, startNode, endNode, euclideanHeur, m);
@@ -198,11 +200,12 @@ int main() {
             enemy.position.x += (rand()%3 - 1)*1.5f; 
             enemy.position.y += (rand()%3 - 1)*1.5f;
         }
-        // Clamp Enemy
-        if(enemy.position.x < 30) enemy.position.x = 30;
-        if(enemy.position.x > 1170) enemy.position.x = 1170;
-        if(enemy.position.y < 30) enemy.position.y = 30;
-        if(enemy.position.y > 870) enemy.position.y = 870;
+        
+        // Clamp Enemy (310 + margin, 890 - margin)
+        if(enemy.position.x < 320) enemy.position.x = 320;
+        if(enemy.position.x > 880) enemy.position.x = 880;
+        if(enemy.position.y < 245) enemy.position.y = 245;
+        if(enemy.position.y > 655) enemy.position.y = 655;
         enemyShape.setPosition(enemy.position);
 
         window.clear(sf::Color(20, 20, 25));

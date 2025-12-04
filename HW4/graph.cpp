@@ -21,23 +21,24 @@ int Graph::getNodeAt(float x, float y, float cellSize) {
 
 Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
     // Window: 1200x900
-    // Arena: 1160x860 (20px padding on all sides)
-    // Bounds: X[20, 1180], Y[20, 880]
+    // PREVIOUS Arena: 1160x860
+    // NEW Arena (Scaled 0.5): 580x430
     
     const int W = 1200;
     const int H = 900;
-    const float CELL_SIZE = 30.f; 
+    const float CELL_SIZE = 20.f; // Reduced cell size for smaller map
     const int COLS = W / (int)CELL_SIZE;
     const int ROWS = H / (int)CELL_SIZE;
 
     walls.clear();
 
-    float startX = 20.f;
-    float startY = 20.f;
-    float roomW = 1160.f;
-    float roomH = 860.f;
-    float midX = 600.f; // Center of screen
-    float midY = 450.f; // Center of screen
+    // Center calculations
+    float roomW = 580.f;
+    float roomH = 430.f;
+    float startX = (W - roomW) / 2.f; // 310
+    float startY = (H - roomH) / 2.f; // 235
+    float midX = W / 2.f; // 600
+    float midY = H / 2.f; // 450
     float thick = 20.f;
 
     // --- 1. Outer Arena Walls ---
@@ -46,19 +47,29 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
     walls.emplace_back(sf::FloatRect({startX - thick, startY}, {thick, roomH})); // Left
     walls.emplace_back(sf::FloatRect({startX + roomW, startY}, {thick, roomH})); // Right
 
-    // --- 2. Inner Cross Walls (Aligned to Center) ---
-    // Vertical Split
-    walls.emplace_back(sf::FloatRect({midX - thick/2, startY}, {thick, 300.f})); // Top segment
-    walls.emplace_back(sf::FloatRect({midX - thick/2, startY + 450.f}, {thick, 410.f})); // Bottom segment
+    // --- 2. Inner Cross Walls (Scaled lengths) ---
+    // Vertical Split (x = 600)
+    // Top Segment: Length 150 (was 300)
+    walls.emplace_back(sf::FloatRect({midX - thick/2, startY}, {thick, 150.f}));
+    // Bottom Segment: Length 205 (was 410) -> Start at 450 (midY)
+    walls.emplace_back(sf::FloatRect({midX - thick/2, startY + 225.f}, {thick, 205.f}));
 
-    // Horizontal Split
-    walls.emplace_back(sf::FloatRect({startX, midY - thick/2}, {400.f, thick})); // Left segment
-    walls.emplace_back(sf::FloatRect({startX + 550.f, midY - thick/2}, {610.f, thick})); // Right segment
+    // Horizontal Split (y = 450)
+    // Left Segment: Length 200 (was 400)
+    walls.emplace_back(sf::FloatRect({startX, midY - thick/2}, {200.f, thick}));
+    // Right Segment: Length 305 (was 610) -> Start at 600+75 = 675?
+    // Gap needs to be ~75px. 
+    // StartX + 200 + 75 = 310 + 275 = 585. 
+    // Let's place it from (midX + 37.5) to end.
+    walls.emplace_back(sf::FloatRect({midX + 37.5f, midY - thick/2}, {roomW - (midX - startX) - 37.5f, thick}));
 
-    // --- 3. Obstacles ---
-    walls.emplace_back(sf::FloatRect({150.f, 150.f}, {100.f, 100.f})); // TL
-    walls.emplace_back(sf::FloatRect({900.f, 150.f}, {50.f, 300.f}));  // TR
-    walls.emplace_back(sf::FloatRect({200.f, 700.f}, {300.f, 50.f}));  // BL
+    // --- 3. Obstacles (Scaled 0.5) ---
+    // TL: (375, 300) size (50, 50)
+    walls.emplace_back(sf::FloatRect({startX + 65.f, startY + 65.f}, {50.f, 50.f})); 
+    // TR: (750, 300) size (25, 150)
+    walls.emplace_back(sf::FloatRect({startX + 440.f, startY + 65.f}, {25.f, 150.f})); 
+    // BL: (400, 575) size (150, 25)
+    walls.emplace_back(sf::FloatRect({startX + 90.f, startY + 340.f}, {150.f, 25.f})); 
 
     // --- 4. Build Navmesh ---
     Graph g(0, true);
@@ -72,10 +83,10 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
         for (int x = 0; x < COLS; ++x) {
             sf::Vector2f pos(x * CELL_SIZE + CELL_SIZE/2.f, y * CELL_SIZE + CELL_SIZE/2.f);
             
-            // Buffer to keep nodes away from walls
+            // Buffer to keep nodes away from walls (scaled down buffer too)
             sf::FloatRect bufferRect(
-                {pos.x - 20.f, pos.y - 20.f}, 
-                {40.f, 40.f}
+                {pos.x - 12.f, pos.y - 12.f}, 
+                {24.f, 24.f}
             );
 
             bool blocked = false;
