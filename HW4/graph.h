@@ -1,6 +1,6 @@
 #pragma once
 #include <vector>
-#include <SFML/System/Vector2.hpp>
+#include <SFML/Graphics.hpp>
 
 struct Edge {
     int to;
@@ -13,10 +13,14 @@ struct Graph {
     std::vector<std::vector<Edge>> adj;
     std::vector<sf::Vector2f> positions;
 
-    Graph(int n, bool spatial = false);
+    // Helper to map grid coordinates to node ID (-1 if invalid/wall)
+    std::vector<int> gridMap; 
+    int cols, rows;
+
+    Graph(int n = 0, bool spatial = false);
     void addEdge(int u, int v, float w);
-    void generateRandomLarge(int n, int avgDegree);
+    int getNodeAt(float x, float y, float cellSize);
 };
 
-// Global factory function
-Graph createSmallCampusGraph();
+// Returns the graph and fills the obstacles vector for rendering
+Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls);
