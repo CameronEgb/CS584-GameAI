@@ -163,7 +163,7 @@ int main() {
     auto enemyBT = buildEnemyBT();
 
     sf::Clock clock;
-    enum Mode { WARMUP, ACTING, MANUAL };
+    enum Mode { WARMUP, ACTING };
     Mode mode = WARMUP; 
     float stateTimer = 0.f;
     float pathUpdateTimer = 0.f;
@@ -172,7 +172,7 @@ int main() {
     float enemyRepathTimer = 0.f;
 
     std::cout << "--- STARTING ---" << std::endl;
-    std::cout << "Player is AI-controlled. Click to take manual control." << std::endl;
+    std::cout << "Player is AI-controlled." << std::endl;
 
     auto planPathTo = [&](sf::Vector2f target) {
         Metrics m;
@@ -200,7 +200,7 @@ int main() {
         enemy.velocity = {0.f, 0.f};
         mode = WARMUP;
         stateTimer = 0.f;
-        std::cout << "Player is AI-controlled. Click to take manual control." << std::endl;
+        std::cout << "Player is AI-controlled." << std::endl;
     };
 
     while (window.isOpen()) {
@@ -209,16 +209,6 @@ int main() {
 
         while (const std::optional<sf::Event> event = window.pollEvent()) {
             if (event->is<sf::Event::Closed>()) window.close();
-            
-            if (const auto* mousePress = event->getIf<sf::Event::MouseButtonPressed>()) {
-                if (mousePress->button == sf::Mouse::Button::Left) {
-                    sf::Vector2f clickPos(static_cast<float>(mousePress->position.x), 
-                                          static_cast<float>(mousePress->position.y));
-                    planPathTo(clickPos);
-                    mode = MANUAL; 
-                    std::cout << "--- MANUAL CONTROL ---" << std::endl;
-                }
-            }
             
             if (const auto* keyPress = event->getIf<sf::Event::KeyPressed>()) {
                 if (keyPress->code == sf::Keyboard::Key::L) {
