@@ -65,7 +65,7 @@ void Breadcrumb::clear() {
 // TUNING: Reduced maxCrumbs (100) for faster fade. Increased maxSpeed (300).
 Character::Character() 
     : breadcrumbs(100, 4, sf::Color::Magenta), currentWaypoint(0), maxSpeed(150.f), // Adjusted default speed
-      wanderOrientation(0.f), wanderOffset(100.f), wanderRadius(50.f), isAttacking(false), attackTimer(0.f)
+      wanderOrientation(0.f), wanderOffset(200.f), wanderRadius(30.f), isAttacking(false), attackTimer(0.f)
 {
     shape.setPointCount(3);
     shape.setPoint(0, sf::Vector2f(20, 0));
@@ -182,7 +182,7 @@ void Character::flee(sf::Vector2f targetPos, float dt) {
 void Character::wander(float dt) {
     if (isAttacking) return;
     // 1. Update the wander orientation (accumulate small random changes)
-    wanderOrientation += randomBinomial() * 4.0f * dt; // Increased jitter rate
+    wanderOrientation += randomBinomial() * 3.0f * dt; // Adjusted jitter rate
 
     // 2. Calculate the center of the wander circle in front of the agent
     sf::Vector2f circleCenter = kinematic.position;
