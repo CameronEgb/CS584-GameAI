@@ -17,6 +17,11 @@ const sf::Vector2f AGENT_START_POS(200.f, 150.f);
 const sf::Vector2f ENEMY_START_POS(600.f, 450.f);
 const sf::Vector2f CENTER_SCREEN(WINDOW_WIDTH / 2.f, WINDOW_HEIGHT / 2.f);
 
+// --- FORWARD DECLARATIONS ---
+void planPath(Character& chara, const Graph& graph, sf::Vector2f target);
+void moveEnemyChase(Character& enemy, const sf::Vector2f& targetPos, const Graph& graph, const std::vector<sf::FloatRect>& walls, float dt);
+void moveEnemySearch(Character& enemy, const Graph& graph, float dt);
+
 // --- GEOMETRY HELPERS ---
 bool lineSegmentsIntersect(sf::Vector2f p1, sf::Vector2f p2, sf::Vector2f p3, sf::Vector2f p4) {
     float det = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);

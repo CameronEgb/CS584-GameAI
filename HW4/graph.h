@@ -19,7 +19,7 @@ struct Graph {
 
     Graph(int n = 0, bool spatial = false);
     void addEdge(int u, int v, float w);
-    int getNodeAt(float x, float y, float cellSize);
+    int getNodeAt(float x, float y, float cellSize) const; // Added const
 };
 
 // Returns the graph and fills the obstacles vector for rendering

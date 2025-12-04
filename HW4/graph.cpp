@@ -13,7 +13,7 @@ void Graph::addEdge(int u, int v, float w) {
     }
 }
 
-int Graph::getNodeAt(float x, float y, float cellSize) {
+int Graph::getNodeAt(float x, float y, float cellSize) const { // Added const
     int gx = static_cast<int>(x / cellSize);
     int gy = static_cast<int>(y / cellSize);
     if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) return -1;
