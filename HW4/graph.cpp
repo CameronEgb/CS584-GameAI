@@ -23,33 +23,45 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
     // Configuration
     const int W = 1200;
     const int H = 900;
-    const float CELL_SIZE = 30.f; // Granularity of the navmesh
+    const float CELL_SIZE = 30.f; 
     const int COLS = W / (int)CELL_SIZE;
     const int ROWS = H / (int)CELL_SIZE;
 
-    // Define Environment Geometry
     walls.clear();
 
-    // 1. Cross Walls (The 4 Rooms)
-    // Vertical split
-    // SFML 3.0: Rect constructor takes (Position, Size) as vectors
-    walls.emplace_back(sf::FloatRect({585.f, 0.f}, {30.f, 900.f})); 
-    // Horizontal split
-    walls.emplace_back(sf::FloatRect({0.f, 435.f}, {1200.f, 30.f}));
+    // --- 1. Define Geometry (Explicit Rectangles) ---
+    // Instead of big walls with holes, we draw the segments *around* the holes.
+    // Center intersection is at (600, 450)
+    
+    float midX = 600.f;
+    float midY = 450.f;
+    float thick = 20.f; // Wall thickness
 
-    // 2. The 3 Obstacles
-    walls.emplace_back(sf::FloatRect({200.f, 200.f}, {100.f, 100.f})); // Top-Left room obstacle
-    walls.emplace_back(sf::FloatRect({900.f, 200.f}, {60.f, 200.f}));  // Top-Right room obstacle
-    walls.emplace_back(sf::FloatRect({250.f, 650.f}, {150.f, 50.f}));  // Bottom-Left room obstacle
+    // Vertical Wall (Top Segment) - Gap from 150 to 250
+    walls.emplace_back(sf::FloatRect({midX - thick/2, 0.f}, {thick, 150.f}));
+    walls.emplace_back(sf::FloatRect({midX - thick/2, 250.f}, {thick, midY - 250.f}));
 
-    // Define "Doorways" (negative obstacles, or simply areas we allow)
-    std::vector<sf::FloatRect> doorways;
-    doorways.emplace_back(sf::FloatRect({585.f, 200.f}, {30.f, 100.f})); // Gap in vertical wall (top)
-    doorways.emplace_back(sf::FloatRect({585.f, 600.f}, {30.f, 100.f})); // Gap in vertical wall (bottom)
-    doorways.emplace_back(sf::FloatRect({200.f, 435.f}, {100.f, 30.f})); // Gap in horizontal wall (left)
-    doorways.emplace_back(sf::FloatRect({900.f, 435.f}, {100.f, 30.f})); // Gap in horizontal wall (right)
+    // Vertical Wall (Bottom Segment) - Gap from 650 to 750
+    walls.emplace_back(sf::FloatRect({midX - thick/2, midY}, {thick, 200.f})); // 450 to 650
+    walls.emplace_back(sf::FloatRect({midX - thick/2, 750.f}, {thick, 900.f - 750.f}));
 
-    // Build the Grid Graph
+    // Horizontal Wall (Left Segment) - Gap from 150 to 250 (x)
+    walls.emplace_back(sf::FloatRect({0.f, midY - thick/2}, {150.f, thick}));
+    walls.emplace_back(sf::FloatRect({250.f, midY - thick/2}, {midX - 250.f, thick}));
+
+    // Horizontal Wall (Right Segment) - Gap from 950 to 1050 (x)
+    walls.emplace_back(sf::FloatRect({midX, midY - thick/2}, {350.f, thick})); // 600 to 950
+    walls.emplace_back(sf::FloatRect({1050.f, midY - thick/2}, {1200.f - 1050.f, thick}));
+
+    // --- 2. Obstacles (Blocks in rooms) ---
+    // Room 1 (TL): Block
+    walls.emplace_back(sf::FloatRect({100.f, 100.f}, {80.f, 80.f}));
+    // Room 2 (TR): Long vertical barrier
+    walls.emplace_back(sf::FloatRect({900.f, 100.f}, {40.f, 250.f}));
+    // Room 3 (BL): Horizontal Ledge
+    walls.emplace_back(sf::FloatRect({150.f, 700.f}, {200.f, 40.f}));
+
+    // --- 3. Build Navigation Mesh ---
     Graph g(0, true);
     g.cols = COLS;
     g.rows = ROWS;
@@ -57,36 +69,27 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
 
     int nodeCounter = 0;
 
-    // First pass: Create Nodes
+    // Create Nodes (only in empty space)
     for (int y = 0; y < ROWS; ++y) {
         for (int x = 0; x < COLS; ++x) {
+            // Position of node center
             sf::Vector2f pos(x * CELL_SIZE + CELL_SIZE/2.f, y * CELL_SIZE + CELL_SIZE/2.f);
             
-            // SFML 3.0: Rect constructor takes (Position, Size)
+            // Checking rect (slightly smaller than cell to allow movement near walls)
             sf::FloatRect cellRect(
-                {x * CELL_SIZE + 2.f, y * CELL_SIZE + 2.f}, 
-                {CELL_SIZE - 4.f, CELL_SIZE - 4.f}
+                {x * CELL_SIZE + 5.f, y * CELL_SIZE + 5.f}, 
+                {CELL_SIZE - 10.f, CELL_SIZE - 10.f}
             );
 
-            bool isWall = false;
+            bool blocked = false;
             for (const auto& w : walls) {
                 if (w.findIntersection(cellRect)) {
-                    // Check if it's actually a doorway
-                    bool isDoor = false;
-                    for (const auto& d : doorways) {
-                        if (d.findIntersection(cellRect)) {
-                            isDoor = true;
-                            break;
-                        }
-                    }
-                    if (!isDoor) {
-                        isWall = true;
-                        break;
-                    }
+                    blocked = true;
+                    break;
                 }
             }
 
-            if (!isWall) {
+            if (!blocked) {
                 g.gridMap[y * COLS + x] = nodeCounter++;
                 g.positions.push_back(pos);
             }
@@ -96,42 +99,35 @@ Graph createFourRoomGraph(std::vector<sf::FloatRect>& walls) {
     g.numVertices = nodeCounter;
     g.adj.resize(nodeCounter);
 
-    // Second pass: Connect Neighbors
+    // Connect Neighbors
     for (int y = 0; y < ROWS; ++y) {
         for (int x = 0; x < COLS; ++x) {
             int u = g.gridMap[y * COLS + x];
             if (u == -1) continue;
 
-            // Check 4 neighbors
-            int neighbors[4][2] = {{0,1}, {0,-1}, {1,0}, {-1,0}};
-            for (auto& nb : neighbors) {
-                int nx = x + nb[0];
-                int ny = y + nb[1];
+            // 8-way connectivity for smoother paths
+            int dirs[8][2] = {
+                {0,1}, {0,-1}, {1,0}, {-1,0}, // Orthogonal
+                {1,1}, {1,-1}, {-1,1}, {-1,-1} // Diagonal
+            };
+
+            for (auto& d : dirs) {
+                int nx = x + d[0];
+                int ny = y + d[1];
 
                 if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
                     int v = g.gridMap[ny * COLS + nx];
                     if (v != -1) {
-                        float dist = CELL_SIZE; // Orthogonal
-                        g.addEdge(u, v, dist);
-                    }
-                }
-            }
-            
-            // Optional: Diagonals
-            int diag[4][2] = {{1,1}, {1,-1}, {-1,1}, {-1,-1}};
-             for (auto& nb : diag) {
-                int nx = x + nb[0];
-                int ny = y + nb[1];
+                        bool isDiag = (d[0] != 0 && d[1] != 0);
+                        
+                        // Safety check for diagonals: don't cut through "pinched" walls
+                        if (isDiag) {
+                            if (g.gridMap[y * COLS + nx] == -1 || g.gridMap[ny * COLS + x] == -1)
+                                continue;
+                        }
 
-                if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
-                    int v = g.gridMap[ny * COLS + nx];
-                    // Check orthogonal blockers to prevent cutting corners
-                    int v1 = g.gridMap[y * COLS + nx];
-                    int v2 = g.gridMap[ny * COLS + x];
-                    
-                    if (v != -1 && v1 != -1 && v2 != -1) {
-                        float dist = CELL_SIZE * 1.414f;
-                        g.addEdge(u, v, dist);
+                        float weight = isDiag ? CELL_SIZE * 1.414f : CELL_SIZE;
+                        g.addEdge(u, v, weight);
                     }
                 }
             }
