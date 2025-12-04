@@ -14,6 +14,7 @@ enum class ActionType {
     ATTACK,
     HIDE,
     CHASE,
+    DANCE,
     NONE
 };
 

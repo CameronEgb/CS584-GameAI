@@ -183,6 +183,13 @@ std::unique_ptr<BTNode> buildEnemyBT(DataRecorder& recorder) {
     danceSeq->addChild(std::make_unique<BTAction>([&recorder](EnemyContext& ctx) {
         ctx.danceTimer -= ctx.dt;
         
+        WorldState state;
+        state.canSeeEnemy = false; // Can't see player while dancing (simplified)
+        state.enemyNear = false;
+        state.isNearWall = false;
+        state.canHide = false;
+        recorder.record(state, ActionType::DANCE);
+        
         // Spin behavior
         Kinematic& k = ctx.enemy.getKinematicRef();
         k.velocity = {0.f, 0.f}; // Stop moving
@@ -496,8 +503,17 @@ int main() {
                  state.enemyNear = false; state.isNearWall = false; state.canHide = false;
 
                  ActionType act = enemyDT->makeDecision(state);
-                 if (act == ActionType::CHASE) moveEnemyChase(enemy, chara.getKinematic().position, graph, walls, dt);
-                 else moveEnemySearch(enemy, graph, dt);
+                 if (act == ActionType::CHASE) {
+                     moveEnemyChase(enemy, chara.getKinematic().position, graph, walls, dt);
+                 } else if (act == ActionType::DANCE) {
+                     // Replicate Dance spin behavior
+                     Kinematic& k = enemy.getKinematicRef();
+                     k.velocity = {0.f, 0.f}; 
+                     k.rotation = 15.f; 
+                     k.orientation += k.rotation * dt;
+                 } else {
+                     moveEnemySearch(enemy, graph, dt);
+                 }
             } else {
                 // Execute Behavior Tree
                 EnemyContext ctx { enemy, chara.getKinematic(), walls, graph, dt, enemyDanceTimer };

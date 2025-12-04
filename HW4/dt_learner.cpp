@@ -26,14 +26,16 @@ Example parseLine(const std::string& line) {
     ex.state.enemyNear = false;
     ex.state.isNearWall = false;
     ex.state.canSeeEnemy = false;
+    ex.state.canHide = false;
     ex.action = ActionType::NONE;
 
-    if (seglist.size() >= 4) {
+    if (seglist.size() >= 5) {
         ex.state.enemyNear = (seglist[0] == "1");
         ex.state.isNearWall = (seglist[1] == "1");
         ex.state.canSeeEnemy = (seglist[2] == "1");
+        ex.state.canHide = (seglist[3] == "1");
         try {
-            ex.action = (ActionType)std::stoi(seglist[3]);
+            ex.action = (ActionType)std::stoi(seglist[4]);
         } catch (...) {}
     }
     return ex;
@@ -61,6 +63,7 @@ std::pair<std::vector<Example>, std::vector<Example>> split(const std::vector<Ex
         if (attr == "enemyNear") val = ex.state.enemyNear;
         else if (attr == "isNearWall") val = ex.state.isNearWall;
         else if (attr == "canSeeEnemy") val = ex.state.canSeeEnemy;
+        else if (attr == "canHide") val = ex.state.canHide;
         
         if (val) trueSet.push_back(ex);
         else falseSet.push_back(ex);
@@ -156,6 +159,6 @@ std::unique_ptr<DTNode> learnDT(const std::string& filename) {
         return wander;
     }
 
-    std::vector<std::string> attributes = {"enemyNear", "isNearWall", "canSeeEnemy"};
+    std::vector<std::string> attributes = {"enemyNear", "isNearWall", "canSeeEnemy", "canHide"};
     return buildTree(examples, attributes);
 }

@@ -5,7 +5,7 @@ DataRecorder::DataRecorder(const std::string& filename) {
     outFile.open(filename);
     if (outFile.is_open()) {
         // Header
-        outFile << "enemyNear,isNearWall,canSeeEnemy,action\n";
+        outFile << "enemyNear,isNearWall,canSeeEnemy,canHide,action\n";
     } else {
         std::cerr << "Failed to open " << filename << " for recording.\n";
     }
@@ -20,6 +20,7 @@ void DataRecorder::record(const WorldState& state, ActionType action) {
     outFile << (state.enemyNear ? "1" : "0") << ","
             << (state.isNearWall ? "1" : "0") << ","
             << (state.canSeeEnemy ? "1" : "0") << ","
+            << (state.canHide ? "1" : "0") << ","
             << (int)action << "\n";
 }
 
