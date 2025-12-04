@@ -181,18 +181,28 @@ void Character::flee(sf::Vector2f targetPos, float dt) {
 
 void Character::wander(float dt) {
     if (isAttacking) return;
-    // 1. Update the wander orientation
-    wanderOrientation += randomBinomial() * 2.0f * dt; // wanderRate
+    // 1. Update the wander orientation (accumulate small random changes)
+    wanderOrientation += randomBinomial() * 4.0f * dt; // Increased jitter rate
 
-    // 2. Calculate the center of the wander circle
+    // 2. Calculate the center of the wander circle in front of the agent
     sf::Vector2f circleCenter = kinematic.position;
-    circleCenter.x += wanderOffset * std::cos(kinematic.orientation);
-    circleCenter.y += wanderOffset * std::sin(kinematic.orientation);
+    sf::Vector2f heading;
+    if (std::abs(kinematic.getSpeed()) > 0.1f) {
+         heading = kinematic.velocity / kinematic.getSpeed();
+    } else {
+         heading = {std::cos(kinematic.orientation), std::sin(kinematic.orientation)};
+    }
+    
+    circleCenter += heading * wanderOffset;
 
     // 3. Calculate the target point on the circle
+    // IMPORTANT: wanderOrientation is now treated as an offset relative to the agent's heading
+    float currentHeadingAngle = std::atan2(heading.y, heading.x);
+    float targetAngle = currentHeadingAngle + wanderOrientation;
+
     sf::Vector2f targetPos = circleCenter;
-    targetPos.x += wanderRadius * std::cos(wanderOrientation);
-    targetPos.y += wanderRadius * std::sin(wanderOrientation);
+    targetPos.x += wanderRadius * std::cos(targetAngle);
+    targetPos.y += wanderRadius * std::sin(targetAngle);
 
     // 4. Seek the target
     seek(targetPos, dt);

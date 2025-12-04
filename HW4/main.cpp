@@ -348,11 +348,45 @@ int main() {
                         chara.setPath({}); // Clear any path and flee directly
                         chara.flee(enemy.getKinematic().position, dt);
                         break;
-                    case ActionType::SEEK_CENTER:
-                        // Only plan a new path every so often to avoid constant recalculation
-                        if (pathUpdateTimer <= 0.f) { 
-                            planPathTo(CENTER_SCREEN); 
-                            pathUpdateTimer = 1.5f; 
+                    case ActionType::SEEK_CENTER: // Maps to "Avoid Wall" in the DT
+                        {
+                            // Find closest wall point to steer away from
+                            sf::Vector2f charPos = chara.getKinematic().position;
+                            sf::Vector2f repulsionVector(0.f, 0.f);
+                            bool foundWall = false;
+
+                            // Check borders
+                            if (charPos.x < WALL_PROXIMITY) { repulsionVector.x += 1.f; foundWall = true; }
+                            if (charPos.x > WINDOW_WIDTH - WALL_PROXIMITY) { repulsionVector.x -= 1.f; foundWall = true; }
+                            if (charPos.y < WALL_PROXIMITY) { repulsionVector.y += 1.f; foundWall = true; }
+                            if (charPos.y > WINDOW_HEIGHT - WALL_PROXIMITY) { repulsionVector.y -= 1.f; foundWall = true; }
+
+                            // Check internal walls (simple AABB proximity)
+                            for (const auto& w : walls) {
+                                float closestX = std::fmax(w.position.x, std::fmin(charPos.x, w.position.x + w.size.x));
+                                float closestY = std::fmax(w.position.y, std::fmin(charPos.y, w.position.y + w.size.y));
+                                
+                                float dx = charPos.x - closestX;
+                                float dy = charPos.y - closestY;
+                                float distSq = dx*dx + dy*dy;
+                                
+                                if (distSq < WALL_PROXIMITY * WALL_PROXIMITY && distSq > 0.001f) {
+                                    float dist = std::sqrt(distSq);
+                                    repulsionVector.x += (dx / dist);
+                                    repulsionVector.y += (dy / dist);
+                                    foundWall = true;
+                                }
+                            }
+
+                            if (foundWall) {
+                                // Steer in the direction of the repulsion vector
+                                sf::Vector2f target = charPos + repulsionVector * 100.f;
+                                chara.setPath({});
+                                chara.seek(target, dt);
+                            } else {
+                                // Fallback if for some reason we are in this state but no wall is found
+                                chara.wander(dt);
+                            }
                         }
                         break;
                     case ActionType::ATTACK:
