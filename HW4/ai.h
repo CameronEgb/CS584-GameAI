@@ -12,6 +12,7 @@ enum class ActionType {
     SEEK_GOAL,
     FLEE_ENEMY,
     RECHARGE,
+    SEEK_CENTER,
     NONE
 };
 
@@ -20,12 +21,18 @@ struct WorldState {
     bool enemyNear;      // Is enemy within threat range?
     bool energyLow;      // Is energy < threshold?
     bool goalVisible;    // Do we have line of sight to goal? (simplified to distance for now)
+    bool isAtMaxSpeed;
+    bool isNearWall;
+    bool isMonsterNear;
     
     // Helper to print state for debugging
     std::string toString() const {
         return "Enemy:" + std::string(enemyNear ? "T" : "F") + 
                " EnergyLow:" + std::string(energyLow ? "T" : "F") + 
-               " GoalVis:" + std::string(goalVisible ? "T" : "F");
+               " GoalVis:" + std::string(goalVisible ? "T" : "F") +
+               " AtMaxSpeed:" + std::string(isAtMaxSpeed ? "T" : "F") +
+               " NearWall:" + std::string(isNearWall ? "T" : "F") +
+               " MonsterNear:" + std::string(isMonsterNear ? "T" : "F");
     }
 };
 

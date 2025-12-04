@@ -12,6 +12,7 @@
 // --- CONSTANTS ---
 const sf::Vector2f AGENT_START_POS(200.f, 150.f);
 const sf::Vector2f ENEMY_START_POS(600.f, 450.f);
+const sf::Vector2f CENTER_SCREEN(WINDOW_WIDTH / 2.f, WINDOW_HEIGHT / 2.f);
 
 // --- PHYSICS HELPER ---
 void resolveKinematicCollisions(Kinematic& k, const std::vector<sf::FloatRect>& walls) {
@@ -41,6 +42,19 @@ std::unique_ptr<DTNode> buildHardcodedDT() {
     auto checkGoal = std::make_unique<DTDecision>("goalVisible", std::move(seek), std::move(wander));
     auto checkEnergy = std::make_unique<DTDecision>("energyLow", std::move(recharge), std::move(checkGoal));
     auto root = std::make_unique<DTDecision>("enemyNear", std::move(flee), std::move(checkEnergy));
+    return root;
+}
+
+std::unique_ptr<DTNode> buildCustomDT() {
+    auto wander = std::make_unique<DTAction>(ActionType::WANDER);
+    auto seek = std::make_unique<DTAction>(ActionType::SEEK_GOAL);
+    auto flee = std::make_unique<DTAction>(ActionType::FLEE_ENEMY);
+    auto seek_center = std::make_unique<DTAction>(ActionType::SEEK_CENTER);
+
+    auto checkMaxSpeed = std::make_unique<DTDecision>("isAtMaxSpeed", std::move(wander), std::move(seek));
+    auto checkNearWall = std::make_unique<DTDecision>("isNearWall", std::move(seek_center), std::move(checkMaxSpeed));
+    auto root = std::make_unique<DTDecision>("isMonsterNear", std::move(flee), std::move(checkNearWall));
+
     return root;
 }
 
@@ -82,8 +96,12 @@ int main() {
     float energy = 100.0f;
     const float THREAT_DIST = 150.0f;
     const float GOAL_DIST = 300.0f;
+    const float MAX_SPEED = 100.0f;
+    const float WALL_PROXIMITY = 50.0f;
+
 
     auto hardcodedDT = buildHardcodedDT();
+    auto customDT = buildCustomDT();
     std::unique_ptr<DTNode> learnedDT = nullptr;
     std::vector<TrainingExample> trainingData;
 
@@ -202,12 +220,15 @@ int main() {
             state.enemyNear = (dEnemy < THREAT_DIST);
             state.energyLow = (energy < 30.0f);
             state.goalVisible = (dGoal < GOAL_DIST);
+            state.isAtMaxSpeed = chara.getKinematic().getSpeed() > MAX_SPEED;
+            state.isNearWall = chara.getKinematic().position.x < WALL_PROXIMITY || chara.getKinematic().position.x > WINDOW_WIDTH - WALL_PROXIMITY || chara.getKinematic().position.y < WALL_PROXIMITY || chara.getKinematic().position.y > WINDOW_HEIGHT - WALL_PROXIMITY;
+            state.isMonsterNear = dEnemy < THREAT_DIST;
 
             ActionType action = ActionType::NONE;
             
             if (mode != MANUAL) {
                 if (mode == RECORDING) {
-                    action = hardcodedDT->makeDecision(state);
+                    action = customDT->makeDecision(state);
                     if ((int)(stateTimer * 10) % 5 == 0) trainingData.push_back({state, action});
                     stateTimer += dt;
                     if (stateTimer > 10.0f) {
@@ -216,7 +237,7 @@ int main() {
                     }
                 } 
                 else if (mode == LEARNING) {
-                    std::vector<std::string> attrs = {"enemyNear", "energyLow", "goalVisible"};
+                    std::vector<std::string> attrs = {"enemyNear", "energyLow", "goalVisible", "isAtMaxSpeed", "isNearWall", "isMonsterNear"};
                     learnedDT = ID3Learner::learn(trainingData, attrs);
                     learnedDT->print();
                     mode = ACTING;
@@ -247,6 +268,11 @@ int main() {
                         chara.wander(dt);
                         energy -= 1.f * dt;
                         break;
+                    case ActionType::SEEK_CENTER:
+                        if (pathUpdateTimer <= 0.f) { planPathTo(CENTER_SCREEN); pathUpdateTimer = 1.0f; }
+                        energy -= 2.f * dt;
+                        break;
+
                     default: break;
                 }
             }
