@@ -31,9 +31,10 @@ class Breadcrumb {
     sf::Color color;
     std::queue<sf::Vector2f> q;
 public:
-    Breadcrumb(int maxCrumbs_, int dropInterval_, sf::Color c);
+    Breadcrumb(int maxCrumbs_ = 100, int dropInterval_ = 10, sf::Color c = sf::Color::White);
     void update(const sf::Vector2f& pos);
     void draw(sf::RenderWindow& win);
+    void clear(); // Added to satisfy potential calls
 };
 
 class Character {
@@ -43,6 +44,7 @@ private:
     Breadcrumb breadcrumbs;
     std::vector<sf::Vector2f> path;
     int currentWaypoint;
+    float maxSpeed;
 
 public:
     Character();
@@ -52,7 +54,6 @@ public:
     
     // Core updates
     void update(float dt, const Kinematic& target);
-    void updateWithBoundaryHandling(float dt, const Kinematic& target);
     void draw(sf::RenderWindow& win);
     
     // Explicit movement commands for AI

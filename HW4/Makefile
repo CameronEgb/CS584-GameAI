@@ -1,11 +1,9 @@
-# HW4 Makefile
 CXX := g++
 CXXFLAGS := -std=c++17 -Wall -Wextra -O2
 
-# SFML Configuration (Adjust if necessary)
+# Adjust paths for your SFML 3.0 installation
 SFML_LIBS := -lsfml-graphics -lsfml-window -lsfml-system
 
-# Source files
 SRCS := main.cpp graph.cpp pathfinding.cpp steering.cpp ai.cpp
 OBJS := $(SRCS:.cpp=.o)
 TARGET := hw4_sim
