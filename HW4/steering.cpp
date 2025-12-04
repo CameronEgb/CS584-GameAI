@@ -1,7 +1,7 @@
 #include "steering.h"
 #include <iostream>
 #include <algorithm>
-#include <cstdint>
+#include <cstdint> // Required for std::uint8_t
 #include <cmath>
 
 // --- Utilities ---
@@ -18,12 +18,10 @@ float randomBinomial() {
 }
 
 // --- Breadcrumb ---
-// Increased maxCrumbs and frequency
 Breadcrumb::Breadcrumb(int maxCrumbs_, int dropInterval_, sf::Color c)
     : maxCrumbs(maxCrumbs_), dropInterval(dropInterval_), counter(0), color(c) {}
 
 void Breadcrumb::update(const sf::Vector2f &pos) {
-    // Drop logic
     if (++counter >= dropInterval) {
         counter = 0;
         q.push(pos);
@@ -33,19 +31,18 @@ void Breadcrumb::update(const sf::Vector2f &pos) {
 
 void Breadcrumb::draw(sf::RenderWindow &win) {
     std::queue<sf::Vector2f> temp = q;
-    float alpha = 20.f; // Start faint
-    float inc = 235.f / std::max(1, (int)q.size()); // Increment to reach 255
+    float alpha = 20.f; 
+    float inc = 235.f / std::max(1, (int)q.size()); 
     
     while (!temp.empty()) {
         sf::Vector2f p = temp.front(); temp.pop();
         
-        // Increased size for visibility
         sf::CircleShape dot(3.f); 
         dot.setOrigin({1.5f, 1.5f});
         dot.setPosition(p);
         
-        // Ensure alpha is valid uint8
-        sf::Uint8 a = static_cast<sf::Uint8>(std::min(255.f, alpha));
+        // FIX: Use std::uint8_t instead of sf::Uint8
+        std::uint8_t a = static_cast<std::uint8_t>(std::min(255.f, alpha));
         dot.setFillColor(sf::Color(color.r, color.g, color.b, a));
         
         win.draw(dot);
@@ -59,7 +56,6 @@ void Breadcrumb::clear() {
 }
 
 // --- Character ---
-// Color Magenta for high contrast breadcrumbs
 Character::Character() 
     : breadcrumbs(300, 3, sf::Color::Magenta), currentWaypoint(0), maxSpeed(150.f) 
 {
@@ -76,28 +72,25 @@ Character::Character()
 void Character::setPosition(float x, float y) {
     kinematic.position = {x, y};
     shape.setPosition(kinematic.position);
-    // Reset breadcrumbs on teleport/respawn
     breadcrumbs.clear();
 }
 
 void Character::setPath(const std::vector<sf::Vector2f>& p) {
     path = p;
     currentWaypoint = 0;
-    // Don't clear breadcrumbs here so we see where we came from
 }
 
 void Character::seek(sf::Vector2f targetPos, float dt) {
     sf::Vector2f dir = targetPos - kinematic.position;
     float dist = std::hypot(dir.x, dir.y);
-    if (dist > 5.f) dir /= dist; // Normalize
-    else dir = {0,0}; // Stop if very close
+    if (dist > 5.f) dir /= dist; 
+    else dir = {0,0}; 
 
     kinematic.velocity = dir * maxSpeed;
     
     if (dist > 5.f) {
         kinematic.orientation = std::atan2(kinematic.velocity.y, kinematic.velocity.x);
     }
-    // Update is called by main loop now, but we set velocity here
 }
 
 void Character::flee(sf::Vector2f targetPos, float dt) {
@@ -118,37 +111,35 @@ void Character::wander(float dt) {
 }
 
 void Character::update(float dt, const Kinematic& /*target*/) {
-    // 0. Handle Path Following if active
+    // 0. Path Following
     if (!path.empty() && currentWaypoint < path.size()) {
         sf::Vector2f target = path[currentWaypoint];
         sf::Vector2f dir = target - kinematic.position;
         float dist = std::hypot(dir.x, dir.y);
         
         if (dist < 15.f) {
-            currentWaypoint++; // Next point
+            currentWaypoint++; 
         } else {
-            // Simple seek logic for path following
-            dir /= dist;
+            if (dist > 0.01f) dir /= dist;
             kinematic.velocity = dir * maxSpeed;
             kinematic.orientation = std::atan2(dir.y, dir.x);
         }
     } else if (!path.empty() && currentWaypoint >= path.size()) {
-        // End of path
         kinematic.velocity = {0,0};
         path.clear();
     }
 
-    // 1. Update Position
+    // 1. Update Physics
     kinematic.position += kinematic.velocity * dt;
     kinematic.orientation += kinematic.rotation * dt;
     kinematic.orientation = mapToRange(kinematic.orientation);
 
     // 2. Update Visuals
-    // Important: Breadcrumb update happens here
     breadcrumbs.update(kinematic.position);
     
     shape.setPosition(kinematic.position);
-    shape.setRotation(sf::degrees(kinematic.orientation * 180.f / PI));
+    // FIX: Use sf::radians for SFML 3.0 rotation
+    shape.setRotation(sf::radians(kinematic.orientation));
 }
 
 void Character::draw(sf::RenderWindow &win) {
