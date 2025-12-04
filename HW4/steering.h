@@ -71,6 +71,8 @@ public:
     void update(float dt, const Kinematic& target);
     void draw(sf::RenderWindow& win);
     
+    bool isPathComplete() const; // Added helper
+
     void wander(float dt);
     void seek(sf::Vector2f targetPos, float dt);
     void flee(sf::Vector2f targetPos, float dt);

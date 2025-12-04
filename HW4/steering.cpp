@@ -262,3 +262,7 @@ void Character::draw(sf::RenderWindow &win) {
     breadcrumbs.draw(win);
     win.draw(shape);
 }
+
+bool Character::isPathComplete() const {
+    return path.empty() || currentWaypoint >= (int)path.size();
+}

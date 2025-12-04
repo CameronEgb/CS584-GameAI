@@ -154,7 +154,7 @@ int main() {
     enemyShape.setOrigin({15.f, 15.f});
 
     // --- AI STATE ---
-    const float THREAT_DIST = 200.0f;
+    const float THREAT_DIST = 150.0f;
     const float WALL_PROXIMITY = 60.0f; // Increased for better wall avoidance
     const float NORMAL_SPEED = 150.f;
     const float FLEE_SPEED = 250.f;
@@ -275,8 +275,13 @@ int main() {
                         chara.attack(enemy.position, dt);
                         break;
                     case ActionType::WANDER:
-                        chara.setPath({}); // Clear any path and just wander
-                        chara.wander(dt);
+                        // Smart Wander: Pick a random node and pathfind
+                        if (chara.isPathComplete()) {
+                            if (graph.numVertices > 0) {
+                                int r = std::rand() % graph.numVertices;
+                                planPathTo(graph.positions[r]);
+                            }
+                        }
                         break;
                     default: 
                         chara.stop();
