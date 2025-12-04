@@ -106,11 +106,15 @@ void resolveKinematicCollisions(Kinematic& k, const std::vector<sf::FloatRect>& 
         std::optional<sf::FloatRect> intersection = w.findIntersection(bounds);
         if (intersection) {
             if (intersection->size.x < intersection->size.y) {
+                // Horizontal collision (hit vertical side of wall)
                 if (k.position.x < w.position.x) k.position.x -= intersection->size.x;
                 else k.position.x += intersection->size.x;
+                k.velocity.x = 0.f; // Kill x velocity
             } else {
+                // Vertical collision (hit horizontal side of wall)
                 if (k.position.y < w.position.y) k.position.y -= intersection->size.y;
                 else k.position.y += intersection->size.y;
+                k.velocity.y = 0.f; // Kill y velocity
             }
         }
     }
@@ -240,7 +244,7 @@ int main() {
 
     // --- AI STATE ---
     const float THREAT_DIST = 200.0f;
-    const float WALL_PROXIMITY = 60.0f; // Increased for better wall avoidance
+    const float WALL_PROXIMITY = 35.0f; // Decreased to allow movement through doors
     const float NORMAL_SPEED = 150.f;
     const float FLEE_SPEED = 250.f;
 
