@@ -244,7 +244,7 @@ int main() {
 
     // --- AI STATE ---
     const float THREAT_DIST = 200.0f;
-    const float WALL_PROXIMITY = 35.0f; // Decreased to allow movement through doors
+    const float WALL_PROXIMITY = 25.0f; // Further decreased for less aggressive wall avoidance
     const float NORMAL_SPEED = 150.f;
     const float FLEE_SPEED = 250.f;
 
@@ -400,8 +400,8 @@ int main() {
                                 }
 
                                 // Steer in the direction of the repulsion vector
-                                // Increased distance to 150.f to prevent 'braking' effect
-                                sf::Vector2f target = charPos + repulsionVector * 150.f;
+                                // Increased distance to 100.f for less dramatic bounce
+                                sf::Vector2f target = charPos + repulsionVector * 100.f;
                                 chara.setPath({});
                                 chara.seek(target, dt);
                             } else {
