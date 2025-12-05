@@ -347,6 +347,11 @@ int main() {
                 if (keyPress->code == sf::Keyboard::Key::L) {
                     std::cout << "Learning ENEMY DT from data..." << std::endl;
                     enemyDT = learnDT("training_data.csv");
+                    if (enemyDT) {
+                        std::cout << "--- Learned Decision Tree ---" << std::endl;
+                        enemyDT->print();
+                        std::cout << "-----------------------------" << std::endl;
+                    }
                 }
             }
         }

@@ -46,6 +46,11 @@ public:
     BTStatus tick(EnemyContext& ctx) override;
 };
 
+class BTRandomSelector : public BTComposite {
+public:
+    BTStatus tick(EnemyContext& ctx) override;
+};
+
 class BTAction : public BTNode {
     std::function<BTStatus(EnemyContext&)> actionFn;
 public:
